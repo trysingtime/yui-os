@@ -1,1 +1,1 @@
-tolset\z_tools\nask.exe source\helloos.nas source\helloos.img
+tolset\z_tools\nask.exe source\helloos.nas target\helloos.img

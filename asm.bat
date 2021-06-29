@@ -1,1 +1,0 @@
-tolset\z_tools\nask.exe source\ipl.nas target\ipl.bin target\ipl.lst

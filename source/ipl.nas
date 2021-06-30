@@ -42,14 +42,24 @@ entry:
 	MOV		DH,0			; 磁头0
 	MOV		CL,2			; 扇区2
 
-	MOV		AH,0x02			; 0x02:读盘;0x03:写盘;0x04:校验;0x0c:寻道
+	MOV		SI,0			; 记录失败次数
+retry:
+	MOV		AH,0x02			; 0x02:读盘;0x03:写盘;0x04:校验;0x0c:寻道;0x00:系统复位
 	MOV		AL,1			; 一个扇区
 	MOV		BX,0
 	MOV		DL,0x00			; A驱动器
 	INT		0x13			; 调用磁盘BIOS(返回FLACS.CF, 0:没有错误(AH置为0), 1:有错误(AH置为错误码))
-	JC		error
+	JNC		fin
 
-; 读取完毕, 
+	ADD		SI,1
+	CMP		SI,5
+	JAE		error			; SI>=5
+	MOV		AH,0x00			; 系统复位
+	MOV		DL,0x00			; A驱动器
+	INT		0x13
+	JMP		retry
+
+; 读取完毕
 
 fin:
 	HLT						; 让CPU停止, 等待指令

@@ -1,6 +1,8 @@
 ; hello-os
 ; TAB=4
 
+CYLS	EQU		10			; 读取柱面数
+
 	ORG	0x7c00				; 指明程序的装载地址
 
 ; 标准FAT12格式软盘
@@ -41,7 +43,7 @@ entry:
 	MOV		CH,0			; 柱面0
 	MOV		DH,0			; 磁头0
 	MOV		CL,2			; 扇区2
-
+readloop:
 	MOV		SI,0			; 记录失败次数
 retry:
 	MOV		AH,0x02			; 0x02:读盘;0x03:写盘;0x04:校验;0x0c:寻道;0x00:系统复位
@@ -49,8 +51,8 @@ retry:
 	MOV		BX,0
 	MOV		DL,0x00			; A驱动器
 	INT		0x13			; 调用磁盘BIOS(返回FLACS.CF, 0:没有错误(AH置为0), 1:有错误(AH置为错误码))
-	JNC		fin
-
+	JNC		next
+; 读取重试
 	ADD		SI,1
 	CMP		SI,5
 	JAE		error			; SI>=5
@@ -58,8 +60,27 @@ retry:
 	MOV		DL,0x00			; A驱动器
 	INT		0x13
 	JMP		retry
+next:
+; 读取18扇区
+	MOV		AX,ES			; 将内存地址后移0x200,ES无法使用ADD,通过AX实现
+	ADD		AX,0x0020		; [ES:BX]=ESx16+BX, 因此后移0x200相当于ES后移0x0020
+	MOV		ES,AX
+	ADD		CL,1
+	CMP		CL,18			; 扇区号
+	JBE		readloop		; CL<=18
+; 读取2磁头
+	MOV		CL,1
+	ADD		DH,1
+	CMP		DH,2
+	JB		readloop		; DH<2
+; 读取10柱面
+	MOV		DH,0
+	ADD		CH,1
+	CMP		CH,CYLS
+	JB		readloop		; CH<CYLS
 
-; 读取完毕
+
+; 读取完毕	
 
 fin:
 	HLT						; 让CPU停止, 等待指令

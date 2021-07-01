@@ -9,20 +9,20 @@ DEL      = del
 default : 
 	$(MAKE) img
 
-ipl.bin : source\ipl.nas Makefile
-	$(NASK) source\ipl.nas target\ipl.bin target\ipl.lst
+ipl10.bin : source\ipl10.nas Makefile
+	$(NASK) source\ipl10.nas target\ipl10.bin target\ipl10.lst
 
 haribote.sys : source\haribote.nas Makefile
 	$(NASK) source\haribote.nas target\haribote.sys target\haribote.lst
 
-haribote.img : ipl.bin haribote.sys Makefile
+haribote.img : ipl10.bin haribote.sys Makefile
 	$(EDIMG)   imgin:tolset/z_tools/fdimg0at.tek \
-		wbinimg src:target/ipl.bin len:512 from:0 to:0 \
+		wbinimg src:target/ipl10.bin len:512 from:0 to:0 \
 		copy from:target/haribote.sys to:@: \
 		imgout:target/haribote.img
 	
 asm :
-	$(MAKE) -r ipl.bin
+	$(MAKE) -r ipl10.bin
 
 img :
 	$(MAKE) -r haribote.img
@@ -36,8 +36,8 @@ install :
 	$(IMGTOL) w a: target\haribote.img
 
 clean :
-	-$(DEL) target\ipl.bin
-	-$(DEL) target\ipl.lst
+	-$(DEL) target\ipl10.bin
+	-$(DEL) target\ipl10.lst
 	-$(DEL) target\haribote.sys
 	-$(DEL) target\haribote.lst
 

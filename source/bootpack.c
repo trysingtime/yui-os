@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 void io_hlt(void); // 待机
 void io_cli(void); // 中断标志置0, 禁止中断
 void io_out8(int port, int data); //向指定设备(port)输出数据
@@ -8,6 +10,8 @@ void init_palette(void); // 初始化调色盘
 void set_palette(int start, int end, unsigned char *rgb); // 设置调色盘
 void boxfill8(unsigned char *vram, int xsize, unsigned char c, int x0, int y0, int x1, int y1); // 绘制矩形
 void init_screen(char *vram, int screenx, int screeny); // 初始化屏幕
+void putfont8(char *vram, int screenx, int x, int y, char color, char *font); // 绘制字符
+void putfonts8_asc(char *vram, int screenx, int x, int y, char color, unsigned char *str) ; // 绘制字符串
 
 // 定义色号和颜色映射关系
 #define COL8_000000		0   /*  0:黑 */
@@ -30,21 +34,22 @@ void init_screen(char *vram, int screenx, int screeny); // 初始化屏幕
 struct BOOTINFO {
     // 缓存在指定位置的BOOT_INFO(asmhead.nas中)
     char cyls, leds, vmode, reserve;
-    short screenx, screeny;  // 分辨率
+    short screenx, screeny; // 分辨率
     char *vram; // VRAM起始地址
 };
 
 void HariMain(void) {
     struct BOOTINFO *bootinfo = (struct BOOTINFO *)0x0ff0;
-    // 使用16字节定义一个8x16像素的字符"A"
-    static char font_A[16] = {
-		0x00, 0x18, 0x18, 0x18, 0x18, 0x24, 0x24, 0x24,
-		0x24, 0x7e, 0x42, 0x42, 0x42, 0xe7, 0x00, 0x00
-	};
+    char s[40];
 
     init_palette(); // 设定调色盘
     init_screen(bootinfo -> vram, bootinfo -> screenx, bootinfo -> screeny); // 初始化屏幕
-    putfont8(bootinfo -> vram, bootinfo -> screenx, 10, 10, COL8_FFFFFF, font_A); // 绘制字符
+    // 绘制字符串
+ 	putfonts8_asc(bootinfo -> vram, bootinfo -> screenx,  8,  8, COL8_FFFFFF, "ABC 123");
+	putfonts8_asc(bootinfo -> vram, bootinfo -> screenx, 31, 31, COL8_000000, "Haribote OS."); // 文字阴影效果
+	putfonts8_asc(bootinfo -> vram, bootinfo -> screenx, 30, 30, COL8_FFFFFF, "Haribote OS.");
+    sprintf(s, "screenx = %d", bootinfo -> screenx);
+    putfonts8_asc(bootinfo -> vram, bootinfo -> screenx, 16, 64, COL8_FFFFFF, s);
 
     // 待机
     for (;;) {
@@ -102,7 +107,7 @@ void set_palette(int start, int end, unsigned char *rgb) {
 
 /*
     绘制矩形
-    *vram: vram起始地址
+    vram: vram起始地址
     screenx: 分辨率x轴大小
     color: 色号
     x0, y0, x1, y1: 矩形位置
@@ -120,7 +125,7 @@ void boxfill8(unsigned char *vram, int screenx, unsigned char color, int x0, int
 
 /*
     初始化桌面
-    *vram: vram起始地址
+    vram: vram起始地址
     screenx: 分辨率x轴大小
     screeny: 分辨率y轴大小
 */
@@ -146,11 +151,11 @@ void init_screen(char *vram, int screenx, int screeny) {
 
 /*
     绘制字符
-    *vram: vram起始地址
+    vram: vram起始地址
     screenx: 分辨率x轴大小
     x, y: 字符位置
     color: 色号
-    *font: 字体数据(使用16字节定义一个8x16像素的字符)
+    font: 字体数据(使用16字节定义一个8x16像素的字符)
 */
 void putfont8(char *vram, int screenx, int x, int y, char color, char *font) {
     int i;
@@ -167,4 +172,22 @@ void putfont8(char *vram, int screenx, int x, int y, char color, char *font) {
 		if ((font[i] & 0x02) != 0) { p[6] = color; }
 		if ((font[i] & 0x01) != 0) { p[7] = color; }
     }
+}
+
+/*
+    绘制字符串
+    vram: vram起始地址
+    screenx: 分辨率x轴大小
+    x, y: 字符串位置
+    color: 色号
+    str: 字符串
+*/
+void putfonts8_asc(char *vram, int screenx, int x, int y, char color, unsigned char *str) {
+    extern char hankaku[4096]; // 使用16字节定义一个8x16像素的字符, 此处是4096个字符集合
+    // c语言中, 字符串以0x00结尾
+    for (; *str != 0x00; str++) {
+        putfont8(vram, screenx, x, y, color, hankaku + *str * 16);
+        x += 8;
+    }
+    return;
 }

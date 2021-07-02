@@ -10,11 +10,18 @@ GAS2NASK = $(TOOLPATH)gas2nask.exe -a
 NASK     = $(TOOLPATH)nask.exe
 # obj link other to bim(链接其他文件, 做成二进制镜像文件(image), 组成一个完整的机器语言, 仍不能运行)
 OBJ2BIM  = $(TOOLPATH)obj2bim.exe
+RULEFILE = $(TOOLPATH)haribote/haribote.rul
 # bim to hrb(针对不同的操作系统, 给镜像文件加工, 变成真正能使用的文件)
 BIM2HRB  = $(TOOLPATH)bim2hrb.exe
-RULEFILE = $(TOOLPATH)haribote/haribote.rul
+# 汇编生成的bin文件和c语言生成的hrb文件相加, 生成sys文件
+# ipl文件和sys文件写入镜像,生成img文件
 EDIMG    = $(TOOLPATH)edimg.exe
+# img文件写入磁盘
 IMGTOL   = $(TOOLPATH)imgtol.com
+
+# 字体编译
+MAKEFONT = $(TOOLPATH)makefont.exe
+BIN2OBJ  = $(TOOLPATH)bin2obj.exe
 COPY     = copy
 DEL      = del
 
@@ -39,10 +46,16 @@ bootpack.obj : bootpack.nas Makefile
 naskfunc.obj : source\naskfunc.nas Makefile
 	$(NASK) source\naskfunc.nas target\naskfunc.obj target\naskfunc.lst
 
+hankaku.bin : source\hankaku.txt Makefile
+	$(MAKEFONT) source\hankaku.txt target\hankaku.bin
+
+hankaku.obj : hankaku.bin Makefile
+	$(BIN2OBJ) target\hankaku.bin target\hankaku.obj _hankaku
+
 # 3MB+64KB=3136KB
-bootpack.bim : bootpack.obj naskfunc.obj Makefile
-	$(OBJ2BIM) @$(RULEFILE) out:target\bootpack.bim stack:3136k \
-		map:bootpack.map target\bootpack.obj target\naskfunc.obj
+bootpack.bim : bootpack.obj naskfunc.obj hankaku.obj Makefile
+	$(OBJ2BIM) @$(RULEFILE) out:target\bootpack.bim stack:3136k map:target\bootpack.map \
+		target\bootpack.obj target\naskfunc.obj target\hankaku.obj
 
 bootpack.hrb : bootpack.bim Makefile
 	$(BIM2HRB) target\bootpack.bim target\bootpack.hrb 0

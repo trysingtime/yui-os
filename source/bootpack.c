@@ -4,21 +4,56 @@ void io_out8(int port, int data); //向指定设备(port)输出数据
 int io_load_eflags(void); // 读取EFLAGS寄存器(包含进位标志(第0位),中断标志(第9位))
 void io_store_eflags(int eflags); // 还原EFLAGS寄存器(包含进位标志(第0位),中断标志(第9位))
 
-void init_palette(void); // 初始化s调色盘
+void init_palette(void); // 初始化调色盘
 void set_palette(int start, int end, unsigned char *rgb); // 设置调色盘
+void boxfill8(unsigned char *vram, int xsize, unsigned char c, int x0, int y0, int x1, int y1); // 绘制矩形
+
+// 定义色号和颜色映射关系
+#define COL8_000000		0   /*  0:黑 */
+#define COL8_FF0000		1   /*  1:梁红 */
+#define COL8_00FF00		2   /*  2:亮绿 */
+#define COL8_FFFF00		3   /*  3:亮黄 */
+#define COL8_0000FF		4   /*  4:亮蓝 */
+#define COL8_FF00FF		5   /*  5:亮紫 */
+#define COL8_00FFFF		6   /*  6:浅亮蓝 */
+#define COL8_FFFFFF		7   /*  7:白 */
+#define COL8_C6C6C6		8   /*  8:亮灰 */
+#define COL8_840000		9   /*  9:暗红 */
+#define COL8_008400		10  /* 10:暗绿 */
+#define COL8_848400		11  /* 11:暗黄 */
+#define COL8_000084		12  /* 12:暗青 */
+#define COL8_840084		13  /* 13:暗紫 */
+#define COL8_008484		14  /* 14:浅暗蓝 */
+#define COL8_848484		15  /* 15:暗灰 */
 
 void HariMain(void) {
-    int i;
-    char *p;
+    char *vram; // VRAM起始地址
+    int xsize, ysize; // 分辨率
 
     init_palette(); // 设定调色盘
+    vram = (char *) 0xa0000;
+    xsize = 320;
+    ysize = 200;
+    
+    // 绘制多个矩形
+	boxfill8(vram, xsize, COL8_008484,  0,         0,          xsize -  1, ysize - 29); // 桌面背景色-浅暗蓝
+	boxfill8(vram, xsize, COL8_C6C6C6,  0,         ysize - 28, xsize -  1, ysize - 28); // 过渡-灰白
+	boxfill8(vram, xsize, COL8_FFFFFF,  0,         ysize - 27, xsize -  1, ysize - 27); // 过渡-白
+	boxfill8(vram, xsize, COL8_C6C6C6,  0,         ysize - 26, xsize -  1, ysize -  1); // 任务栏背景色-亮灰
 
-    p = (char *) 0xa0000; // VRAM起始地址
-    for (i = 0; i <= 0xffff; i++) {
-        // 等价write_mem8(i, i & 0x0f);
-        p[i] = i & 0x0f;
-    }
+	boxfill8(vram, xsize, COL8_FFFFFF,  3,         ysize - 24, 59,         ysize - 24); // 开始按钮上边框-白
+	boxfill8(vram, xsize, COL8_FFFFFF,  2,         ysize - 24,  2,         ysize -  4); // 开始按钮左边框-白
+	boxfill8(vram, xsize, COL8_848484,  3,         ysize -  4, 59,         ysize -  4); // 开始按钮底边阴影-暗灰
+	boxfill8(vram, xsize, COL8_848484, 59,         ysize - 23, 59,         ysize -  5); // 开始按钮右边阴影-暗灰
+	boxfill8(vram, xsize, COL8_000000,  2,         ysize -  3, 59,         ysize -  3); // 开始按钮底边框-黑
+	boxfill8(vram, xsize, COL8_000000, 60,         ysize - 24, 60,         ysize -  3); // 开始按钮右边框-黑
 
+	boxfill8(vram, xsize, COL8_848484, xsize - 47, ysize - 24, xsize -  4, ysize - 24); // 任务状态栏凹槽上边框-暗灰
+	boxfill8(vram, xsize, COL8_848484, xsize - 47, ysize - 23, xsize - 47, ysize -  4); // 任务状态栏凹槽左边框-暗灰
+	boxfill8(vram, xsize, COL8_FFFFFF, xsize - 47, ysize -  3, xsize -  4, ysize -  3); // 任务状态栏凹槽底边框-白
+	boxfill8(vram, xsize, COL8_FFFFFF, xsize -  3, ysize - 24, xsize -  3, ysize -  3); // 任务状态栏凹槽右边框-白
+
+    // 待机
     for (;;) {
         io_hlt(); //执行naskfunc.nas里的_io_hlt
     }
@@ -69,5 +104,23 @@ void set_palette(int start, int end, unsigned char *rgb) {
     }
 
     io_store_eflags(eflags); // 还原EFLAGS寄存器(包含进位标志(第0位),中断标志(第9位))
+    return;
+}
+
+/*
+    绘制矩形
+    *vram: vram起始地址
+    xsize: 分辨率x轴大小
+    color: 色号
+    x0, y0, x1, y1: 矩形位置
+*/
+void boxfill8(unsigned char *vram, int xsize, unsigned char color, int x0, int y0, int x1, int y1) {
+    int x, y;
+    for (y = y0; y <= y1; y++) {
+        for (x = x0; x<= x1; x++) {
+            // 像素坐标 = vram(0xa0000) + x + y * xsize(320)
+            vram[x + y * xsize] = color;
+        }
+    }
     return;
 }

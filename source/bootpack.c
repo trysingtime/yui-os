@@ -9,9 +9,12 @@ void io_store_eflags(int eflags); // 还原EFLAGS寄存器(包含进位标志(�
 void init_palette(void); // 初始化调色盘
 void set_palette(int start, int end, unsigned char *rgb); // 设置调色盘
 void boxfill8(unsigned char *vram, int xsize, unsigned char c, int x0, int y0, int x1, int y1); // 绘制矩形
-void init_screen(char *vram, int screenx, int screeny); // 初始化屏幕
+void init_screen8(char *vram, int screenx, int screeny); // 初始化屏幕
 void putfont8(char *vram, int screenx, int x, int y, char color, char *font); // 绘制字符
 void putfonts8_asc(char *vram, int screenx, int x, int y, char color, unsigned char *str) ; // 绘制字符串
+void init_mouse_cursor8(char *mouse, char bc); // 初始化鼠标指针(16x16像素)像素点颜色数据
+void putblock8_8(char *vram, int screenx, int pxsize,
+	int pysize, int px0, int py0, char *buf, int bxsize); // 绘制图形
 
 // 定义色号和颜色映射关系
 #define COL8_000000		0   /*  0:黑 */
@@ -40,14 +43,24 @@ struct BOOTINFO {
 
 void HariMain(void) {
     struct BOOTINFO *bootinfo = (struct BOOTINFO *)0x0ff0;
-    char s[40];
+    char s[40], mcursor[256];
+    int mx, my;
 
     init_palette(); // 设定调色盘
-    init_screen(bootinfo -> vram, bootinfo -> screenx, bootinfo -> screeny); // 初始化屏幕
+    init_screen8(bootinfo -> vram, bootinfo -> screenx, bootinfo -> screeny); // 初始化屏幕
+
+    // 绘制鼠标指针
+    mx = (bootinfo -> screenx - 16) / 2; // 计算屏幕中间点(减去指针本身)
+    my = (bootinfo -> screeny - 28 - 16) / 2; // 计算屏幕中间点(减去任务栏和指针本身)
+    init_mouse_cursor8(mcursor, COL8_008484);
+    putblock8_8(bootinfo -> vram, bootinfo -> screenx, 16, 16, mx, my, mcursor, 16);
+
     // 绘制字符串
  	putfonts8_asc(bootinfo -> vram, bootinfo -> screenx,  8,  8, COL8_FFFFFF, "ABC 123");
 	putfonts8_asc(bootinfo -> vram, bootinfo -> screenx, 31, 31, COL8_000000, "Haribote OS."); // 文字阴影效果
 	putfonts8_asc(bootinfo -> vram, bootinfo -> screenx, 30, 30, COL8_FFFFFF, "Haribote OS.");
+
+    // 绘制变量
     sprintf(s, "screenx = %d", bootinfo -> screenx);
     putfonts8_asc(bootinfo -> vram, bootinfo -> screenx, 16, 64, COL8_FFFFFF, s);
 
@@ -129,7 +142,7 @@ void boxfill8(unsigned char *vram, int screenx, unsigned char color, int x0, int
     screenx: 分辨率x轴大小
     screeny: 分辨率y轴大小
 */
-void init_screen(char *vram, int screenx, int screeny) {
+void init_screen8(char *vram, int screenx, int screeny) {
     // 绘制多个矩形
 	boxfill8(vram, screenx, COL8_008484,  0,                    0, screenx -  1, screeny - 29); // 桌面背景色-浅暗蓝
 	boxfill8(vram, screenx, COL8_C6C6C6,  0,         screeny - 28, screenx -  1, screeny - 28); // 过渡-灰白
@@ -190,4 +203,70 @@ void putfonts8_asc(char *vram, int screenx, int x, int y, char color, unsigned c
         x += 8;
     }
     return;
+}
+
+/*
+    初始化鼠标指针(16x16像素)像素点颜色数据
+    mouse: 鼠标指针像素点颜色数据存储地址
+    bc: 背景色
+*/
+void init_mouse_cursor8(char *mouse, char bc) {
+    // 定义一个16x16像素的鼠标指针
+    static char cursor[16][16] = {
+		"**************..",
+		"*OOOOOOOOOOO*...",
+		"*OOOOOOOOOO*....",
+		"*OOOOOOOOO*.....",
+		"*OOOOOOOO*......",
+		"*OOOOOOO*.......",
+		"*OOOOOOO*.......",
+		"*OOOOOOOO*......",
+		"*OOOO**OOO*.....",
+		"*OOO*..*OOO*....",
+		"*OO*....*OOO*...",
+		"*O*......*OOO*..",
+		"**........*OOO*.",
+		"*..........*OOO*",
+		"............*OO*",
+		".............***"
+	};
+    int x, y;
+
+    for (y = 0; y < 16; y++) {
+        for (x = 0; x < 16; x ++) {
+            // 边框
+            if (cursor[y][x] == '*') {
+                mouse[y * 16 + x] = COL8_000000;
+            }
+            // 字体
+            if (cursor[y][x] == '0') {
+                mouse[y * 16 + x] = COL8_FFFFFF;
+            }
+            // 背景
+            if (cursor[y][x] == '.') {
+                mouse[y * 16 + x] = bc;
+            }
+        }
+    }
+}
+
+/*
+    绘制图形
+    vram: vram起始地址
+    screenx: 分辨率x轴大小
+    pxsize, pysize: 图形大小
+    px0, py0: 图形位置
+    buf: 图形像素点颜色数据
+    bxsize: 图形每一行像素数
+*/
+void putblock8_8(char *vram, int screenx, int pxsize,
+	int pysize, int px0, int py0, char *buf, int bxsize)
+{
+	int x, y;
+	for (y = 0; y < pysize; y++) {
+		for (x = 0; x < pxsize; x++) {
+			vram[(py0 + y) * screenx + (px0 + x)] = buf[y * bxsize + x];
+		}
+	}
+	return;
 }

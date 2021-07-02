@@ -9,8 +9,8 @@ DSKCAC0	EQU		0x00008000		; 磁盘缓存的位置（实模式）
 CYLS	EQU		0x0ff0			; 读取的柱面数
 LEDS	EQU		0x0ff1
 VMODE	EQU		0x0ff2			; 几位色
-SCRNX	EQU		0x0ff4			; 分辨率X
-SCRNY	EQU		0x0ff6			; 分辨率Y
+SCREENX	EQU		0x0ff4			; 分辨率X
+SCREENY	EQU		0x0ff6			; 分辨率Y
 VRAM	EQU		0x0ff8			; 图像缓冲区开始地址
 
         ORG     0xc200
@@ -23,8 +23,8 @@ VRAM	EQU		0x0ff8			; 图像缓冲区开始地址
 
 ; 保存BOOT_INFO
         MOV     BYTE [VMODE],8      ; 几位色
-        MOV     WORD [SCRNX],320    ; 分辨率X
-        MOV     WORD [SCRNY],200    ; 分辨率Y
+        MOV     WORD [SCREENX],320    ; 分辨率X
+        MOV     WORD [SCREENY],200    ; 分辨率Y
         MOV     DWORD [VRAM],0x000a0000     ; 图像缓冲区开始地址(不同显卡模式对应不同VRAM地址, 0x13对应0xa0000~0xaffff)
 
 ; 通过BIOS取得键盘各种LED指示灯的状态

@@ -1,10 +1,14 @@
 #include <stdio.h>
 
+// 汇编语言
+
 void io_hlt(void); // 待机
 void io_cli(void); // 中断标志置0, 禁止中断
 void io_out8(int port, int data); //向指定设备(port)输出数据
 int io_load_eflags(void); // 读取EFLAGS寄存器(包含进位标志(第0位),中断标志(第9位))
 void io_store_eflags(int eflags); // 还原EFLAGS寄存器(包含进位标志(第0位),中断标志(第9位))
+
+// C语言
 
 void init_palette(void); // 初始化调色盘
 void set_palette(int start, int end, unsigned char *rgb); // 设置调色盘
@@ -41,6 +45,33 @@ struct BOOTINFO {
     char *vram; // VRAM起始地址
 };
 
+// GDT结构(8字节):GDT(global segment descriptor table)的单元
+// GDTR(global segment descriptor table register)中保存GDT的起始地址和个数, GDT保存SEGMENT_DESCRIPTOR(8字节), SEGMENT_DESCRIPTOR保存段起始地址,上限地址及段属性
+struct SEGMENT_DESCRIPTOR {
+    // base:该段起始地址, limit:该段地址上限值, access_right:段的属性
+    short limit_low, base_low;
+    char base_mid, access_right;
+    char limit_high, base_high;
+};
+
+// IDT结构(8字节):IDT(interrupt descriptor table)的单元
+// IDTR(interrupt descriptor table register)中保存IDT的起始地址和个数, IDT保存GATE_DESCRIPTOR(8字节), GATE_DESCRIPTOR保存中断函数地址
+struct GATE_DESCRIPTOR {
+    short offset_low, selector;
+    char dw_count, access_right;
+    short offset_high;
+};
+
+// 汇编语言
+
+void load_gdtr(int limit, int addr); // 把已知的GDT起始地址和段个数加载到GDTR寄存器
+void load_idtr(int limit, int addr); // 把已知的IDT起始地址和中断个数加载到IDTR寄存器
+// C语言
+
+void init_gdtidt(void); // 设定GDT/IDT的起始地址和上限地址, 并初始化GDT/IDT(调用set_segmdesc/set_gatedesc), 定义每个段号对应的段信息/每个中断号对应的函数信息
+void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar); // 设置每个段号对应的段信息
+void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar); // 设置每个中断号对应的函数信息
+
 void HariMain(void) {
     struct BOOTINFO *bootinfo = (struct BOOTINFO *)0x0ff0;
     char s[40], mcursor[256];
@@ -70,6 +101,9 @@ void HariMain(void) {
     }
 }
 
+/*
+    初始化调色盘
+*/
 void init_palette(void) {
     static unsigned char table_rgb[16 * 3] = {
         0x00, 0x00, 0x00,	/*  0:黑 */
@@ -269,4 +303,76 @@ void putblock8_8(char *vram, int screenx, int pxsize,
 		}
 	}
 	return;
+}
+
+/*
+    初始化GDT, IDT
+    设定GDT/IDT的起始地址和上限地址, 并初始化GDT/IDT(调用set_segmdesc/set_gatedesc), 定义每个段号对应的段信息/每个中断号对应的函数信息
+    - GDT(global segment descriptor table): 全局段号记录表, GDT由SEGMENT_DESCRIPTOR(8字节)组成
+        GDTR(global segment descriptor table register)中保存GDT的起始地址和个数, GDT保存SEGMENT_DESCRIPTOR(8字节), SEGMENT_DESCRIPTOR保存段起始地址,上限地址及段属性
+    - IDT(interrupt descriptor table): 中断记录表, IDT由GATE_DESCRIPTOR(8字节)组成
+        IDTR(interrupt descriptor table register)中保存IDT的起始地址和个数, IDT保存GATE_DESCRIPTOR(8字节), GATE_DESCRIPTOR保存中断函数地址
+*/
+void init_gdtidt(void) {
+    struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) 0x00270000; // GDT起始地址
+    struct GATE_DESCRIPTOR *idt = (struct GATE_DESCRIPTOR *) 0x0026f800; // IDT起始地址
+    int i;
+
+    // GDT全置为0
+    for (i = 0; i < 8192; i++) {
+        set_segmdesc(gdt + i, 0, 0, 0);
+    }
+    // 设置段号1
+    set_segmdesc(gdt + 1, 0xffffffff, 0x00000000, 0x4092);
+    // 设置段号2
+    set_segmdesc(gdt + 2, 0x0007ffff, 0x00280000, 0x409a);
+    // 将GDT的段个数和起始地址保存到GDTR寄存器
+    load_idtr(0x7ff, 0x00270000);
+
+    // GDT全置为0
+    for (i = 0; i < 256; i++) {
+        set_gatedesc(idt + i, 0, 0, 0);
+    }
+    // 将GDT的中断个数和起始地址保存到IDTR寄存器
+    load_idtr(0x7ff, 0x0026f800);
+
+    return;
+}
+
+/*
+    定义每个段号对应的段信息(段起始地址, 上限地址, 段属性)
+    sd: SEGMENT_DESCRIPTOR(8字节), 存储段起始地址, 上限地址, 段属性
+    limit: 段上限地址
+    base: 段起始地址
+    access_right: 段属性, 实际上只能保存8位, 但此处使用了int类型(32位)
+*/
+void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int access_right) {
+    // 段上限地址超过0xfffff, SEGMENT_DESCRIPTOR(8字节)不够空间存储, 借用段属性变量未使用到的位保存进位信息
+    if (limit > 0xfffff) {
+        access_right |= 0x8000; // access_right实际只使用最低8位, 此处借用其中一位保存进位信息
+        limit /= 0x1000;
+    }
+    sd -> access_right  = access_right & 0xff;
+    sd -> base_low      = base & 0xffff;
+    sd -> base_mid      = (base >> 16) & 0xff;
+    sd -> base_high     = (base >> 24) & 0xff;
+    sd -> limit_low     = limit & 0xffff;
+    sd -> limit_high    = ((limit >> 16) & 0x0f) | ((access_right >> 8) & 0xf0); // 将保存在access_right中的进位信息放到limit_high最高位
+    return;
+}
+
+/*
+    每个中断号对应的函数信息
+    gd: GATE_DESCRIPTOR(8字节), 存储段起始地址, 上限地址, 段属性
+    limit: 段上限地址
+    base: 段起始地址
+    access_right: 段属性, 实际上只能保存8位, 但此处使用了int类型(32位)
+*/
+void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int access_right) {
+    gd -> access_right  = access_right & 0xff;
+    gd -> dw_count      = (access_right >> 8 ) & 0xff;
+    gd -> selector      = selector;
+    gd -> offset_low    = offset & 0xffff;
+    gd -> offset_high   = (offset >> 16) & 0xffff;
+    return;
 }

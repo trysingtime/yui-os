@@ -12,7 +12,8 @@
         GLOBAL _io_in8, _io_in16, _io_in32
         GLOBAL _io_out8, _io_out16, _io_out32
         GLOBAL _io_load_eflags, _io_store_eflags
-        GLOBAL _write_mem8   
+        GLOBAL _write_mem8
+        GLOBAL _load_gdtr, _load_idtr
 
 [SECTION .text]             ; 目标文件中写了这些之后再写程序
 
@@ -98,4 +99,18 @@ _write_mem8:    ; void write_mem8(int addr, int data);
         MOV     ECX,[ESP+4]         ; 读取第一个参数addr(汇编与C联合使用, 只能使用EAX,ECX,EDX, 其他寄存器被用于C编译后的机器语言)
         MOV     AL,[ESP+8]          ; 读取第二个参数data
         MOV     [ECX],AL            ; 将data写入addr指定的地址
+        RET
+
+; 将GDT的段个数和起始地址保存到GDTR寄存器
+_load_gdtr:	; void load_gdtr(int limit, int addr);
+        MOV	AX,[ESP+4]              ; 只需要limit低位两字节
+        MOV	[ESP+6],AX              ; 低位两字节覆盖高位两字节
+        LGDT	[ESP+6]
+        RET
+
+; 将IDT的中断个数和起始地址保存到IDTR寄存器
+_load_idtr:	; void load_idtr(int limit, int addr);
+        MOV	AX,[ESP+4]		; 只需要limit低位两字节
+        MOV	[ESP+6],AX              ; 低位两字节覆盖高位两字节
+        LIDT	[ESP+6]
         RET

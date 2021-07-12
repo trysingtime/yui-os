@@ -101,16 +101,16 @@ _write_mem8:    ; void write_mem8(int addr, int data);
         MOV     [ECX],AL            ; 将data写入addr指定的地址
         RET
 
-; 将GDT的段个数和起始地址保存到GDTR寄存器
+; 将GDT的段个数和起始地址保存到GDTR寄存器(48位)
 _load_gdtr:	; void load_gdtr(int limit, int addr);
-        MOV	AX,[ESP+4]              ; 只需要limit低位两字节
-        MOV	[ESP+6],AX              ; 低位两字节覆盖高位两字节
-        LGDT	[ESP+6]
+        MOV	AX,[ESP+4]              ; 只需要limit低位两字节(例如FFFF0000 00002700)
+        MOV	[ESP+6],AX              ; 低位两字节覆盖高位两字节(例如FFFFFFFF 00002700)
+        LGDT	[ESP+6]                 ; 从指定地址读取6个字节(例如FFFF002700)
         RET
 
-; 将IDT的中断个数和起始地址保存到IDTR寄存器
+; 将IDT的中断个数和起始地址保存到IDTR寄存器(48位)
 _load_idtr:	; void load_idtr(int limit, int addr);
         MOV	AX,[ESP+4]		; 只需要limit低位两字节
         MOV	[ESP+6],AX              ; 低位两字节覆盖高位两字节
-        LIDT	[ESP+6]
+        LIDT	[ESP+6]                 ; 从指定地址读取6个字节
         RET

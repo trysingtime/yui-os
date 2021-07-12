@@ -1,3 +1,7 @@
+# 变量
+OBJS_BOOTPACK = bootpack.obj naskfunc.obj hankaku.obj graphic.obj dsctbl.obj
+OBJS_BOOTPACK_TARGET = target\bootpack.obj target\naskfunc.obj target\hankaku.obj target\graphic.obj target\dsctbl.obj
+
 TOOLPATH = tolset/z_tools/
 INCPATH  = tolset/z_tools/haribote/
 
@@ -25,6 +29,7 @@ BIN2OBJ  = $(TOOLPATH)bin2obj.exe
 COPY     = copy
 DEL      = del
 
+# 单元规则
 default : 
 	$(MAKE) img
 
@@ -33,15 +38,6 @@ ipl10.bin : source\ipl10.nas Makefile
 
 asmhead.bin : source\asmhead.nas Makefile
 	$(NASK) source\asmhead.nas target\asmhead.bin target\asmhead.lst
-
-bootpack.gas : source\bootpack.c Makefile
-	$(CC1) -o target\bootpack.gas source\bootpack.c
-
-bootpack.nas : bootpack.gas Makefile
-	$(GAS2NASK) target\bootpack.gas target\bootpack.nas
-
-bootpack.obj : bootpack.nas Makefile
-	$(NASK) target\bootpack.nas target\bootpack.obj target\bootpack.lst
 
 naskfunc.obj : source\naskfunc.nas Makefile
 	$(NASK) source\naskfunc.nas target\naskfunc.obj target\naskfunc.lst
@@ -53,9 +49,9 @@ hankaku.obj : hankaku.bin Makefile
 	$(BIN2OBJ) target\hankaku.bin target\hankaku.obj _hankaku
 
 # 3MB+64KB=3136KB
-bootpack.bim : bootpack.obj naskfunc.obj hankaku.obj Makefile
+bootpack.bim : $(OBJS_BOOTPACK) Makefile
 	$(OBJ2BIM) @$(RULEFILE) out:target\bootpack.bim stack:3136k map:target\bootpack.map \
-		target\bootpack.obj target\naskfunc.obj target\hankaku.obj
+		$(OBJS_BOOTPACK_TARGET)
 
 bootpack.hrb : bootpack.bim Makefile
 	$(BIM2HRB) target\bootpack.bim target\bootpack.hrb 0
@@ -69,6 +65,17 @@ haribote.img : ipl10.bin haribote.sys Makefile
 		copy from:target/haribote.sys to:@: \
 		imgout:target/haribote.img
 
+# 通配符规则
+%.gas : source\%.c Makefile
+	$(CC1) -o target\$*.gas source\$*.c
+
+%.nas : %.gas Makefile
+	$(GAS2NASK) target\$*.gas target\$*.nas
+
+%.obj : %.nas Makefile
+	$(NASK) target\$*.nas target\$*.obj target\$*.lst
+
+# 汇总规则
 img :
 	$(MAKE) haribote.img
 
@@ -84,8 +91,8 @@ clean :
 	-$(DEL) target\*.bin
 	-$(DEL) target\*.lst
 	-$(DEL) target\*.gas
+	-$(DEL) target\*.nas
 	-$(DEL) target\*.obj
-	-$(DEL) target\bootpack.nas
 	-$(DEL) target\bootpack.map
 	-$(DEL) target\bootpack.bim
 	-$(DEL) target\bootpack.hrb

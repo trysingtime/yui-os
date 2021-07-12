@@ -6,11 +6,11 @@ DSKCAC	EQU		0x00100000		; 磁盘缓存的位置
 DSKCAC0	EQU		0x00008000		; 磁盘缓存的位置（实模式）
 
 ; 指定一段内存地址, 用以缓存BOOT_INFO
-CYLS	EQU		0x0ff0			; 读取的柱面数
-LEDS	EQU		0x0ff1
-VMODE	EQU		0x0ff2			; 几位色
-SCREENX	EQU		0x0ff4			; 分辨率X
-SCREENY	EQU		0x0ff6			; 分辨率Y
+CYLS	EQU		0x0ff0			; 启动时读取的柱面数
+LEDS	EQU		0x0ff1			; 启动时键盘LED的状态
+VMODE	EQU		0x0ff2			; 显卡模式为多少位彩色
+SCREENX	EQU		0x0ff4			; 画面分辨率X
+SCREENY	EQU		0x0ff6			; 画面分辨率Y
 VRAM	EQU		0x0ff8			; 图像缓冲区开始地址
 
         ORG     0xc200

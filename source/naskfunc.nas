@@ -12,8 +12,10 @@
         GLOBAL _io_in8, _io_in16, _io_in32
         GLOBAL _io_out8, _io_out16, _io_out32
         GLOBAL _io_load_eflags, _io_store_eflags
-        GLOBAL _write_mem8
+        GLOBAL _write_mem8, _read_mem8
         GLOBAL _load_gdtr, _load_idtr
+        GLOBAL _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
+	EXTERN _inthandler21, _inthandler27, _inthandler2c
 
 [SECTION .text]             ; 目标文件中写了这些之后再写程序
 
@@ -81,13 +83,13 @@ _io_out32:       ; void io_out32(int port, int data);
         OUT     DX,EAX
         RET        
 
-; 读取EFLAGS寄存器(包含进位标志(第0位),中断标志(第9位))
+; 读取EFLAGS寄存器(32位)(包含进位标志(第0位),中断标志(第9位))
 _io_load_eflags:        ; int io_load_eflags(void);
         PUSHFD          ; 直接操作EFLAGS, push flags double-world
         POP     EAX
         RET
 
-; 还原EFLAGS寄存器(包含进位标志(第0位),中断标志(第9位))
+; 还原EFLAGS寄存器(32位)(包含进位标志(第0位),中断标志(第9位))
 _io_store_eflags:        ; void io_sotre_eflags(int eflags);
         MOV     EAX,[ESP+4]
         PUSH    EAX
@@ -99,6 +101,12 @@ _write_mem8:    ; void write_mem8(int addr, int data);
         MOV     ECX,[ESP+4]         ; 读取第一个参数addr(汇编与C联合使用, 只能使用EAX,ECX,EDX, 其他寄存器被用于C编译后的机器语言)
         MOV     AL,[ESP+8]          ; 读取第二个参数data
         MOV     [ECX],AL            ; 将data写入addr指定的地址
+        RET
+
+; 从addr指定的地址读取一个字节
+_read_mem8:     ; char read_mem8(int addr);
+        MOV     EDX,[ESP+4]
+        MOV     AL,[EDX]
         RET
 
 ; 将GDT的段个数和起始地址保存到GDTR寄存器(48位)
@@ -114,3 +122,54 @@ _load_idtr:	; void load_idtr(int limit, int addr);
         MOV	[ESP+6],AX              ; 低位两字节覆盖高位两字节
         LIDT	[ESP+6]                 ; 从指定地址读取6个字节
         RET
+
+; 调用C语言inthandler21方法
+_asm_inthandler21:
+        PUSH	ES
+        PUSH	DS
+        PUSHAD
+        MOV	EAX,ESP                 
+        PUSH	EAX
+        MOV	AX,SS                   ; 调用C语言函数前, SS,DS,ES设置成相同(C语言规范)
+        MOV	DS,AX                   
+        MOV	ES,AX
+        CALL	_inthandler21
+        POP	EAX
+        POPAD
+        POP	DS
+        POP	ES
+        IRETD
+
+; 调用C语言inthandler27方法
+_asm_inthandler27:
+        PUSH	ES
+        PUSH	DS
+        PUSHAD
+        MOV	EAX,ESP
+        PUSH	EAX
+        MOV	AX,SS
+        MOV	DS,AX
+        MOV	ES,AX
+        CALL	_inthandler27
+        POP	EAX
+        POPAD
+        POP	DS
+        POP	ES
+        IRETD
+
+; 调用C语言inthandler2c方法
+_asm_inthandler2c:
+        PUSH	ES
+        PUSH	DS
+        PUSHAD
+        MOV	EAX,ESP
+        PUSH	EAX
+        MOV	AX,SS
+        MOV	DS,AX
+        MOV	ES,AX
+        CALL	_inthandler2c
+        POP	EAX
+        POPAD
+        POP	DS
+        POP	ES
+        IRETD

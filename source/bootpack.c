@@ -9,6 +9,10 @@ void HariMain(void) {
     init_palette(); // 设定调色盘
     init_screen8(bootinfo -> vram, bootinfo -> screenx, bootinfo -> screeny); // 初始化屏幕
 
+    init_gdtidt(); // 初始化GDT/IDT
+    init_pic(); // 初始化PIC
+    io_sti(); // 允许中断
+
     // 绘制鼠标指针
     mx = (bootinfo -> screenx - 16) / 2; // 计算屏幕中间点(减去指针本身)
     my = (bootinfo -> screeny - 28 - 16) / 2; // 计算屏幕中间点(减去任务栏和指针本身)
@@ -23,6 +27,10 @@ void HariMain(void) {
     // 绘制变量
     sprintf(s, "screenx = %d", bootinfo -> screenx);
     putfonts8_asc(bootinfo -> vram, bootinfo -> screenx, 16, 64, COL8_FFFFFF, s);
+
+    // 开放PIC, 键盘是IRQ1, PIC1是IRQ2, 鼠标是IRQ12
+	io_out8(PIC0_IMR, 0xf9); /* 开放PIC1和键盘中断(11111001) */
+	io_out8(PIC1_IMR, 0xef); /* 开放鼠标中断(11101111) */
 
     // 待机
     for (;;) {

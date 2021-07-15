@@ -31,14 +31,17 @@ void init_pic(void) {
 	return;
 }
 
+#define PORT_KEYDAT		0x0060 // 键盘对应的端口
+
+struct FIFO8 keyfifo;
+
 /* 来自PS/2键盘的中断(IRQ1, INT 0x21)*/
 void inthandler21(int *esp) {
-	struct BOOTINFO *binfo = (struct BOOTINFO *) ADR_BOOTINFO;
-	boxfill8(binfo->vram, binfo->screenx, COL8_000000, 0, 0, 32 * 8 - 1, 15);
-	putfonts8_asc(binfo->vram, binfo->screenx, 0, 0, COL8_FFFFFF, "INT 21 (IRQ-1) : PS/2 keyboard");
-	for (;;) {
-		io_hlt();
-	}
+	unsigned char data;
+	io_out8(PIC0_OCW2, 0x61); // 通知PIC, IRQ-01(0x61-0x60)已接收到中断, 继续监听下一个中断
+	data = io_in8(PORT_KEYDAT); // 从端口0x0060(键盘)读取一个字节
+	fifo8_put(&keyfifo, data); // 将data写入缓冲区
+	return;
 }
 
 /* 来自PS/2鼠标的中断(IRQ12, INT 0x2c) */

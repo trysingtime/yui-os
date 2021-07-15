@@ -26,17 +26,17 @@ _io_hlt:        ; void io_hlt(void);
         HLT
         RET
 
-; 中断许可标志置0
+; 中断许可标志置0, 禁止中断
 _io_cli:        ; void io_cli(void);
         CLI
         RET
 
-; 中断许可标志置1
+; 中断许可标志置1, 允许中断
 _io_sti:        ; void io_sti(void);
         STI
         RET
 
-; 中断许可标志置1并待机
+; 允许中断并待机(CPU规范中如果STI紧跟HLT, 那么两条指令间不受理中断)
 _io_stihlt:     ; void io_stihlt(void);
         STI
         HLT

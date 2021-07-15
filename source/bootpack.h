@@ -16,15 +16,29 @@ struct BOOTINFO {
 void io_hlt(void); // 待机
 void io_cli(void); // 中断标志置0, 禁止中断
 void io_sti(void); // 中断标志置1, 允许中断
+void io_stihlt(void); // 允许中断并待机
+int io_in8(int port); // 从指定端口读取一个字节
 void io_out8(int port, int data); //向指定设备(port)输出数据
 int io_load_eflags(void); // 读取EFLAGS寄存器(包含进位标志(第0位),中断标志(第9位))
 void io_store_eflags(int eflags); // 还原EFLAGS寄存器(包含进位标志(第0位),中断标志(第9位))
 char read_mem8(int addr); // 从addr指定的地址读取一个字节
 void load_gdtr(int limit, int addr); // 把已知的GDT起始地址和段个数加载到GDTR寄存器
 void load_idtr(int limit, int addr); // 把已知的IDT起始地址和中断个数加载到IDTR寄存器
-void asm_inthandler21(void);
-void asm_inthandler27(void);
-void asm_inthandler2c(void);
+void asm_inthandler21(void); // 键盘中断处理函数
+void asm_inthandler27(void); // 电气噪声处理函数
+void asm_inthandler2c(void); // 鼠标中断处理函数
+
+/* fifo.c */
+
+// 缓冲区结构
+struct FIFO8 {
+    unsigned char *buf; // 缓存区地址
+    int p, q, size, free, flags; // 写入位置, 读出位置, 缓存区总大小, 空余大小, 溢出标识 
+};
+void fifo8_init(struct FIFO8 *fifo, int size, unsigned char *buf); // 初始化缓冲区
+int fifo8_put(struct FIFO8 *fifo, unsigned char data); // 缓冲区写入1字节
+int fifo8_get(struct FIFO8 *fifo); // 缓冲区读出1字节
+int fifo8_status(struct FIFO8 *fifo); // 缓冲区当前深度
 
 /* graphic.c */
 
@@ -110,15 +124,15 @@ void init_pic(void); // 初始化PIC
 void inthandler21(int *esp); // 键盘中断处理函数
 void inthandler27(int *esp); // 鼠标中断处理函数
 void inthandler2c(int *esp); // 电气噪声处理函数
+#define PIC0_IMR		0x0021
 #define PIC0_ICW1		0x0020
 #define PIC0_OCW2		0x0020
-#define PIC0_IMR		0x0021
 #define PIC0_ICW2		0x0021
 #define PIC0_ICW3		0x0021
 #define PIC0_ICW4		0x0021
+#define PIC1_IMR		0x00a1
 #define PIC1_ICW1		0x00a0
 #define PIC1_OCW2		0x00a0
-#define PIC1_IMR		0x00a1
 #define PIC1_ICW2		0x00a1
 #define PIC1_ICW3		0x00a1
 #define PIC1_ICW4		0x00a1

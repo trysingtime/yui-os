@@ -1,6 +1,7 @@
 # 变量
-OBJS_BOOTPACK = bootpack.obj naskfunc.obj hankaku.obj graphic.obj dsctbl.obj int.obj
-OBJS_BOOTPACK_TARGET = target\bootpack.obj target\naskfunc.obj target\hankaku.obj target\graphic.obj target\dsctbl.obj target\int.obj
+OBJS_BOOTPACK = bootpack.obj naskfunc.obj hankaku.obj graphic.obj dsctbl.obj int.obj fifo.obj
+OBJS_BOOTPACK_TARGET = target\bootpack.obj target\naskfunc.obj target\hankaku.obj \
+target\graphic.obj target\dsctbl.obj target\int.obj target\fifo.obj
 
 TOOLPATH = tolset/z_tools/
 INCPATH  = tolset/z_tools/haribote/

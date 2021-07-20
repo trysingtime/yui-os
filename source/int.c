@@ -34,24 +34,24 @@ void init_pic(void) {
 #define PORT_KEYDAT		0x0060 // 键盘对应的端口
 
 struct FIFO8 keyfifo;
-
 /* 来自PS/2键盘的中断(IRQ1, INT 0x21)*/
 void inthandler21(int *esp) {
 	unsigned char data;
-	io_out8(PIC0_OCW2, 0x61); // 通知PIC, IRQ-01(0x61-0x60)已接收到中断, 继续监听下一个中断
+	io_out8(PIC0_OCW2, 0x61); // 通知PIC0(IRQ01~07)/IRQ-01(键盘中断)已接收到中断, 继续监听下一个中断
 	data = io_in8(PORT_KEYDAT); // 从端口0x0060(键盘)读取一个字节
 	fifo8_put(&keyfifo, data); // 将data写入缓冲区
 	return;
 }
 
+struct FIFO8 mousefifo;
 /* 来自PS/2鼠标的中断(IRQ12, INT 0x2c) */
 void inthandler2c(int *esp) {
-	struct BOOTINFO *binfo = (struct BOOTINFO *) ADR_BOOTINFO;
-	boxfill8(binfo->vram, binfo->screenx, COL8_000000, 0, 0, 32 * 8 - 1, 15);
-	putfonts8_asc(binfo->vram, binfo->screenx, 0, 0, COL8_FFFFFF, "INT 2C (IRQ-12) : PS/2 mouse");
-	for (;;) {
-		io_hlt();
-	}
+	unsigned char data;
+	io_out8(PIC1_OCW2, 0x64); // 通知PIC1(IRQ08~15)/IRQ-12(鼠标中断)已接收到中断, 继续监听下一个中断
+	io_out8(PIC0_OCW2, 0x62); // 通知PIC0(IRQ01~07)/IRQ-02(从PIC中断)已接收到中断, 继续监听下一个中断
+	data = io_in8(PORT_KEYDAT); // 从端口0x0060(鼠标)读取一个字节
+	fifo8_put(&mousefifo, data); // 将data写入缓冲区
+	return;
 }
 
 /* PIC0中断的不完整策略 */

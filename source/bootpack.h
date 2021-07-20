@@ -108,12 +108,12 @@ struct GATE_DESCRIPTOR {
 void init_gdtidt(void); // 设定GDT/IDT的起始地址和上限地址, 并初始化GDT/IDT(调用set_segmdesc/set_gatedesc), 定义每个段号对应的段信息/每个中断号对应的函数信息
 void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int access_right); // 设置每个段号对应的段信息
 void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int access_right); // 设置每个中断号对应的函数信息
-#define ADR_IDT			0x0026f800
-#define LIMIT_IDT		0x000007ff
-#define ADR_GDT			0x00270000
-#define LIMIT_GDT		0x0000ffff
-#define ADR_BOTPAK		0x00280000
-#define LIMIT_BOTPAK	0x0007ffff
+#define ADR_IDT			0x0026f800 // IDT起始地址
+#define LIMIT_IDT		0x000007ff // IDT上限地址
+#define ADR_GDT			0x00270000 // GDT起始地址
+#define LIMIT_GDT		0x0000ffff // GDT上限地址
+#define ADR_BOTPAK		0x00280000 // 段号2起始地址
+#define LIMIT_BOTPAK	0x0007ffff // 段号上限地址
 #define AR_DATA32_RW	0x4092
 #define AR_CODE32_ER	0x409a
 #define AR_INTGATE32	0x008e
@@ -124,13 +124,19 @@ void init_pic(void); // 初始化PIC
 void inthandler21(int *esp); // 键盘中断处理函数
 void inthandler27(int *esp); // 鼠标中断处理函数
 void inthandler2c(int *esp); // 电气噪声处理函数
-#define PIC0_IMR		0x0021
+#define PIC0_IMR		0x0021  // IMR(interrupt mask register)地址: PIC的8位寄存器
+/* 
+    ICW(initial control word): 有4个(ICW1-ICW4)
+    - ICW1和ICW4配置与PIC主板的配线方式, 根据硬件已固定
+    - ICW3(8位)每位置为1对应一个从PIC, 根据硬件已固定
+    - ICW2(8位)决定IRQ触发时哪一个中断信号(例如INT 0x20), CPU根据IDT设置调用中断处理函数(需自己配置IDT和编写该处理函数)
+*/ 
 #define PIC0_ICW1		0x0020
 #define PIC0_OCW2		0x0020
 #define PIC0_ICW2		0x0021
 #define PIC0_ICW3		0x0021
 #define PIC0_ICW4		0x0021
-#define PIC1_IMR		0x00a1
+#define PIC1_IMR		0x00a1  // IMR(interrupt mask register)地址: PIC1的8位寄存器
 #define PIC1_ICW1		0x00a0
 #define PIC1_OCW2		0x00a0
 #define PIC1_ICW2		0x00a1

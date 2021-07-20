@@ -36,7 +36,7 @@ _io_sti:        ; void io_sti(void);
         STI
         RET
 
-; 允许中断并待机(CPU规范中如果STI紧跟HLT, 那么两条指令间不受理中断)
+; 允许中断并待机(区别与"io_sti();io_hlt()", CPU规范中如果STI紧跟HLT, 那么两条指令间不受理中断)
 _io_stihlt:     ; void io_stihlt(void);
         STI
         HLT

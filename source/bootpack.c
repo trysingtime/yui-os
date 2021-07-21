@@ -131,11 +131,11 @@ void wait_KBC_sendready(void) {
     初始化键盘控制电路(同时也初始化了鼠标控制电路)
 */
 void init_keyboard(void) {
-    wait_KBC_sendready();
+    wait_KBC_sendready(); // 等待键盘控制电路准备完毕
     // 使键盘控制电路(0x0064)进入模式设定模式(0x60)
     io_out8(PORT_KEYCMD, KEYCMD_WRITE_MODE);
     wait_KBC_sendready();
-    // 设置键盘(0x0060)模式(0x47), 此处包含鼠标控制电路启用
+    // 设置数据端口(键盘/鼠标/A20GATE信号线)(0x0060)模式(0x47), 启用键盘控制电路, 同时也启用了鼠标控制电路启用
     io_out8(PORT_KEYDAT, KBC_MODE);
     return;
 }
@@ -149,11 +149,11 @@ void init_keyboard(void) {
         因此启用鼠标需先初始化键盘控制电路, 再使鼠标本身启用, 此处实现后者
 */
 void enable_mouse(struct MOUSE_DEC *mdec) {
-    wait_KBC_sendready();
+    wait_KBC_sendready(); // 等待键盘控制电路准备完毕
     // 使键盘控制电路(0x0064)进入鼠标控制电路模式(0xd4), 下一个数据会自动发送给鼠标
     io_out8(PORT_KEYCMD, KEYCMD_SENDTO_MOUSE);
     wait_KBC_sendready();
-    // 使鼠标(0x0060)进入启用模式,且鼠标会马上产生一个中断, 生成0xfa的消息
+    // 设置数据端口(键盘/鼠标/A20GATE信号线)(0x0060)模式(0xf4), 启用鼠标, 且鼠标会马上产生一个中断, 生成0xfa的消息
     io_out8(PORT_KEYDAT, MOUSECMD_ENABLE);
     mdec->phase = 0; // 将鼠标阶段置0(初始状态)
     return;

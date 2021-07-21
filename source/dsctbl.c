@@ -39,10 +39,10 @@ void init_gdtidt(void) {
     for (i = 0; i <= LIMIT_GDT / 8; i++) {
         set_segmdesc(gdt + i, 0, 0, 0);
     }
-    // 将GDT的段个数和起始地址保存到GDTR寄存器
+    // 将GDT的段个数(段个数*每段8字节, 此处8192个段)和起始地址保存到GDTR寄存器
     load_gdtr(LIMIT_GDT, ADR_GDT);
     // 设置段号1
-    set_segmdesc(gdt + 1, 0xffffffff, 0x00000000, AR_DATA32_RW);
+    set_segmdesc(gdt + 1, 0xffffffff, 0x00000000, AR_DATA32_RW); // 此处段属性实际为0xc092, 段上限地址为0xfffff, set_segmdesc()会自动处理该转化
     // 设置段号2
     set_segmdesc(gdt + 2, LIMIT_BOTPAK, ADR_BOTPAK, AR_CODE32_ER);
 
@@ -50,7 +50,7 @@ void init_gdtidt(void) {
     for (i = 0; i <= LIMIT_IDT / 8; i++) {
         set_gatedesc(idt + i, 0, 0, 0);
     }
-    // 将IDT的中断个数和起始地址保存到IDTR寄存器
+    // 将IDT的中断个数(段个数*每段8字节, 此处256中断)和起始地址保存到IDTR寄存器
     load_idtr(LIMIT_IDT, ADR_IDT);
     // 设置中断, 调用asm_inthandler函数, 段号为2
     set_gatedesc(idt + 0x21, (int) asm_inthandler21, 2 * 8, AR_INTGATE32);

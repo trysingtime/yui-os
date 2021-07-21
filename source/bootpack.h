@@ -121,8 +121,6 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int acce
 /* int.c */
 
 void init_pic(void); // 初始化PIC
-void inthandler21(int *esp); // 键盘中断处理函数
-void inthandler27(int *esp); // 鼠标中断处理函数
 void inthandler2c(int *esp); // 电气噪声处理函数
 #define PIC0_IMR		0x0021  // IMR(interrupt mask register)地址: PIC的8位寄存器
 /* 
@@ -142,3 +140,21 @@ void inthandler2c(int *esp); // 电气噪声处理函数
 #define PIC1_ICW2		0x00a1
 #define PIC1_ICW3		0x00a1
 #define PIC1_ICW4		0x00a1
+
+/* keyboard.c */
+void inthandler21(int *esp); // 键盘中断处理函数
+void wait_KBC_sendready(void);
+void init_keyboard(void);
+extern struct FIFO8 keyfifo;
+#define PORT_KEYDAT             0x0060      /* 数据端口(键盘/鼠标/A20GATE信号线) */
+#define PORT_KEYCMD             0x0064      /* 键盘控制器端口(用于设置) */
+
+/* mouse.c */
+struct MOUSE_DEC {
+    unsigned char buf[3], phase; // 缓冲鼠标数据, 鼠标阶段
+    int x, y, btn; // 鼠标x轴, y轴, 按键
+};
+void inthandler27(int *esp); // 鼠标中断处理函数
+void enable_mouse(struct MOUSE_DEC *mdec);
+int mouse_decode(struct MOUSE_DEC *mdec, unsigned char data);
+extern struct FIFO8 mousefifo;

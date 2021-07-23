@@ -52,6 +52,7 @@ VRAM	EQU		0x0ff8			; 图像缓冲区开始地址
 ; 切换到保护模式(protected virtual address mode)
 ; 区别实模式(real address mode), 计算内存地址时, 实模式使用段寄存器的值直接指定地址值的一部分(段寄存器*16+指定地址)
 ; 保护模式则通过GDT使用段寄存器的值指定并非实际存在的地址号码(段号起始地址+指定地址), 小结: 有无使用GDT
+; CR0寄存器(32位),bit30+bit29置1禁止缓存,bit31置为0禁用分页,bit0置为1切换到保护模式
 [INSTRSET "i486p"]				; 说明使用486指令(32位)
 		LGDT	[GDTR0]			; 设置临时GDT
 		MOV		EAX,CR0			; control register 0, 非常重要的寄存器

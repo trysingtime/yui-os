@@ -2,7 +2,7 @@
 ; TAB=4
 
 [FORMAT "WCOFF"]            ; 输出格式(需要编译成obj, 所以设定为WCOFF模式)
-[INSTRSET "i486p"]          ; 指定486CPU(32位)使用, 8086->80186->286(16位)->386(32位)->486->Pentium->PentiumPro->PentiumII
+[INSTRSET "i486p"]          ; 指定486CPU(32位)使用, 8086->80186->286(16位)->386(32位)->486(带有缓存)->Pentium->PentiumPro->PentiumII
 [BITS 32]                   ; 设定成32位机器语言模式
 
 ; 编译成obj文件的信息
@@ -14,7 +14,9 @@
         GLOBAL _io_load_eflags, _io_store_eflags
         GLOBAL _write_mem8, _read_mem8
         GLOBAL _load_gdtr, _load_idtr
+        GLOBAL _load_cr0, _store_cr0
         GLOBAL _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
+        GLOBAL _memtest_sub
 	EXTERN _inthandler21, _inthandler27, _inthandler2c
 
 [SECTION .text]             ; 目标文件中写了这些之后再写程序
@@ -83,7 +85,7 @@ _io_out32:       ; void io_out32(int port, int data);
         OUT     DX,EAX
         RET        
 
-; 读取EFLAGS寄存器(32位)(包含进位标志(第0位),中断标志(第9位))
+; 读取EFLAGS寄存器(32位)(包含进位标志(第0位),中断标志(第9位),AC标志位(第18位, 486CPU以上才有))
 _io_load_eflags:        ; int io_load_eflags(void);
         PUSHFD          ; 直接操作EFLAGS, push flags double-world
         POP     EAX
@@ -121,6 +123,16 @@ _load_idtr:	; void load_idtr(int limit, int addr);
         MOV	AX,[ESP+4]		; 只需要limit低位两字节
         MOV	[ESP+6],AX              ; 低位两字节覆盖高位两字节
         LIDT	[ESP+6]                 ; 从指定地址读取6个字节
+        RET
+
+; CR0寄存器(32位),bit30+bit29置1禁止缓存,bit31置为0禁用分页,bit0置为1切换到保护模式
+_load_cr0:      ; int load_cr0(void);
+        MOV     EAX,CR0
+        RET
+
+_store_cr0:     ; void store_cr0(int cr0);
+        MOV     EAX,[ESP+4]
+        MOV     CR0,EAX
         RET
 
 ; 调用C语言inthandler21方法
@@ -173,3 +185,38 @@ _asm_inthandler2c:
         POP	DS
         POP	ES
         IRETD
+
+; 内存容量检查(参考C语言方法memtest_sub_c()说明)
+_memtest_sub:	; unsigned int memtest_sub(unsigned int start, unsigned int end)
+		PUSH	EDI						; （EBX, ESI, EDI も使いたいので）
+		PUSH	ESI
+		PUSH	EBX
+		MOV		ESI,0xaa55aa55			; pat0 = 0xaa55aa55;
+		MOV		EDI,0x55aa55aa			; pat1 = 0x55aa55aa;
+		MOV		EAX,[ESP+12+4]			; i = start;
+mts_loop:
+		MOV		EBX,EAX
+		ADD		EBX,0xffc				; p = i + 0xffc;
+		MOV		EDX,[EBX]				; old = *p;
+		MOV		[EBX],ESI				; *p = pat0;
+		XOR		DWORD [EBX],0xffffffff	; *p ^= 0xffffffff;
+		CMP		EDI,[EBX]				; if (*p != pat1) goto fin;
+		JNE		mts_fin
+		XOR		DWORD [EBX],0xffffffff	; *p ^= 0xffffffff;
+		CMP		ESI,[EBX]				; if (*p != pat0) goto fin;
+		JNE		mts_fin
+		MOV		[EBX],EDX				; *p = old;
+		ADD		EAX,0x1000				; i += 0x1000;
+		CMP		EAX,[ESP+12+8]			; if (i <= end) goto mts_loop;
+		JBE		mts_loop
+		POP		EBX
+		POP		ESI
+		POP		EDI
+		RET
+mts_fin:
+		MOV		[EBX],EDX				; *p = old;
+		POP		EBX
+		POP		ESI
+		POP		EDI
+		RET
+

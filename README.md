@@ -9,4 +9,5 @@ learn to make os
 0x00270000 - 0x0027ffff : (64KB)GDT
 0x00280000 - 0x002fffff : (512KB)bootpack.hrb
 0x00300000 - 0x003fffff : (1MB)栈及其他
+    0x003c0000 - 0x003c8fff : (32KB)内存管理
 0x00400000 -            : 空

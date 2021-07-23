@@ -24,9 +24,12 @@ void io_store_eflags(int eflags); // 还原EFLAGS寄存器(包含进位标志(�
 char read_mem8(int addr); // 从addr指定的地址读取一个字节
 void load_gdtr(int limit, int addr); // 把已知的GDT起始地址和段个数加载到GDTR寄存器
 void load_idtr(int limit, int addr); // 把已知的IDT起始地址和中断个数加载到IDTR寄存器
+int load_cr0(void); // CR0寄存器(32位),bit30+bit29置1禁止缓存,bit31置为0禁用分页,bit0置为1切换到保护模式
+void store_cr0(int cr0);
 void asm_inthandler21(void); // 键盘中断处理函数
 void asm_inthandler27(void); // 电气噪声处理函数
 void asm_inthandler2c(void); // 鼠标中断处理函数
+unsigned int memtest_sub(unsigned int start, unsigned int end); // 内存容量检查
 
 /* fifo.c */
 
@@ -158,3 +161,31 @@ void inthandler27(int *esp); // 鼠标中断处理函数
 void enable_mouse(struct MOUSE_DEC *mdec);
 int mouse_decode(struct MOUSE_DEC *mdec, unsigned char data);
 extern struct FIFO8 mousefifo;
+
+/* memory.c */
+#define MEMMNG_ADDR     0x003c0000; // 内存管理表起始地址
+#define MEMMNG_SIZE     4096 // 空闲内存信息总数: 使用4096个FREEINFO结构记录空闲内存信息
+/*
+    内存空闲信息
+    使用8字节记录某一段空闲内存地址起点和大小
+*/
+struct FREEINFO {
+    unsigned int addr, size;
+};
+/*
+    内存空闲信息-汇总
+*/
+struct MEMMNG {
+    int rows;        // 内存空闲信息条数
+    int maxrows;     // row最大值
+    int lostsize;   // 内存空闲信息条数溢出, 导致内存释放失败的内存大小总和
+    int lostrows;    // 内存空闲信息条数溢出, 导致内存释放失败次数
+    struct FREEINFO freeinfo[MEMMNG_SIZE]; // 内存空闲信息, 使用4096个FREEINFO结构记录空闲内存
+};
+unsigned int memtest(unsigned int start, unsigned int end);
+void memmng_init(struct MEMMNG  *mng);
+unsigned int free_memory_total(struct MEMMNG *mng);
+unsigned int memory_alloc(struct MEMMNG *mng, unsigned int size);
+int memory_free(struct MEMMNG *mng, unsigned int addr, unsigned int size);
+unsigned int memory_alloc_4k(struct MEMMNG *mng, unsigned int size);
+int memory_free_4k(struct MEMMNG *mng, unsigned int addr, unsigned int size);

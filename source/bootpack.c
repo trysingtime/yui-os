@@ -6,6 +6,8 @@ void HariMain(void) {
     char s[40], mcursor[256], keybuf[32], mousebuf[128];
     int mx, my, i;
     struct MOUSE_DEC mdec;
+    unsigned int memorytotal;
+    struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR;
 
     init_gdtidt(); // 初始化GDT/IDT
     init_pic(); // 初始化PIC
@@ -18,6 +20,12 @@ void HariMain(void) {
 	io_out8(PIC1_IMR, 0xef); /* 开放鼠标中断(11101111) */
 
     init_keyboard(); // 初始化键盘控制电路(包含鼠标控制电路)
+    enable_mouse(&mdec); // 启用鼠标本身
+    
+    memorytotal = memtest(0x00400000, 0xbfffffff); // 获取总内存大小
+    memmng_init(mng);
+    memory_free(mng, 0x00001000, 0x0009e000); // 0x00001000~0x0009e000暂未使用, 释放掉
+    memory_free(mng, 0x00400000, memorytotal - 0x00400000); // 0x00400000以后的内存也暂未使用, 释放掉
 
     init_palette(); // 设定调色盘
     init_screen8(bootinfo -> vram, bootinfo -> screenx, bootinfo -> screeny); // 初始化屏幕
@@ -31,11 +39,14 @@ void HariMain(void) {
 	putfonts8_asc(bootinfo->vram, bootinfo->screenx, 0, 0, COL8_FFFFFF, s);
     // 绘制字符串
  	// putfonts8_asc(bootinfo->vram, bootinfo->screenx,  8,  8, COL8_FFFFFF, "ABC 123");
-	putfonts8_asc(bootinfo->vram, bootinfo->screenx, 31, 31, COL8_000000, "Haribote OS."); // 文字阴影效果
-	putfonts8_asc(bootinfo->vram, bootinfo->screenx, 30, 30, COL8_FFFFFF, "Haribote OS.");
+	putfonts8_asc(bootinfo->vram, bootinfo->screenx, 101, 71, COL8_000000, "Haribote OS."); // 文字阴影效果
+	putfonts8_asc(bootinfo->vram, bootinfo->screenx, 100, 70, COL8_FFFFFF, "Haribote OS.");
 
-    enable_mouse(&mdec); // 启用鼠标本身
+    // 绘制内存信息
+    sprintf(s, "memory %dMB     free : %dKB", memorytotal / (1024 * 1024), free_memory_total(mng) / 1024);
+	putfonts8_asc(bootinfo->vram, bootinfo->screenx, 0, 32, COL8_FFFFFF, s);
 
+    // 键盘和鼠标输入处理
     for (;;) {
         io_cli();
         if (fifo8_status(&keyfifo) + fifo8_status(&mousefifo) == 0) {

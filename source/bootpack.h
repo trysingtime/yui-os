@@ -218,16 +218,17 @@ struct LAYER {
     layer: 图层
 */
 struct LAYERCTL {
-    unsigned char *vram;
+    unsigned char *vram, *map;
     int xsize, ysize, top;
     struct LAYER *layersorted[MAX_LAYERS];
-    struct LAYER layer[MAX_LAYERS];
+    struct LAYER layers[MAX_LAYERS];
 };
 struct LAYERCTL *layerctl_init(struct MEMMNG *memmng, unsigned char *vram, int xsize, int ysize);
 struct LAYER *layer_alloc(struct LAYERCTL * ctl);
 void layer_init(struct LAYER *layer, unsigned char *buf, int xsize, int ysize, int col_inv);
 void layer_refresh(struct LAYER *layer, int bx0, int by0, int bx1, int by1);
-void layer_refresh_abs(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1, int h0);
+void layer_refresh_abs(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1, int h0, int h1);
+void layer_refresh_map(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1, int h0);
 void layer_updown( struct LAYER *layer, int height);
 void layer_slide(struct LAYER *layer, int vx0, int vy0);
 void layer_free(struct LAYER *layer);

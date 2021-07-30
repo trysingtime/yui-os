@@ -145,6 +145,7 @@ void inthandler2c(int *esp); // 电气噪声处理函数
 #define PIC1_ICW4		0x00a1
 
 /* keyboard.c */
+
 void inthandler21(int *esp); // 键盘中断处理函数
 void wait_KBC_sendready(void);
 void init_keyboard(void);
@@ -153,6 +154,7 @@ extern struct FIFO8 keyfifo;
 #define PORT_KEYCMD             0x0064      /* 键盘控制器端口(用于设置) */
 
 /* mouse.c */
+
 struct MOUSE_DEC {
     unsigned char buf[3], phase; // 缓冲鼠标数据, 鼠标阶段
     int x, y, btn; // 鼠标x轴, y轴, 按键
@@ -163,6 +165,7 @@ int mouse_decode(struct MOUSE_DEC *mdec, unsigned char data);
 extern struct FIFO8 mousefifo;
 
 /* memory.c */
+
 #define MEMMNG_ADDR     0x003c0000; // 内存管理表起始地址
 #define MEMMNG_SIZE     4096 // 空闲内存信息总数: 使用4096个FREEINFO结构记录空闲内存信息
 /*
@@ -189,3 +192,41 @@ unsigned int memory_alloc(struct MEMMNG *mng, unsigned int size);
 int memory_free(struct MEMMNG *mng, unsigned int addr, unsigned int size);
 unsigned int memory_alloc_4k(struct MEMMNG *mng, unsigned int size);
 int memory_free_4k(struct MEMMNG *mng, unsigned int addr, unsigned int size);
+
+/* layer.c */
+
+#define MAX_LAYERS      256 // 最大图层数
+/*
+    图层
+    buf: 图层关联的内容地址;
+    bxsize, bysize: 图层大小;
+    vx0, v0: 图层坐标
+    col_inv: color(颜色)和invisible(透明度)
+    height: 图层高度
+    flags: 图层已使用标识
+*/
+struct LAYER {
+    unsigned char *buf;
+    int bxsize, bysize, vx0, vy0, col_inv, height, flags;
+};
+/*
+    图层管理
+    vram, xsiez, ysize: vram地址和画面大小, 不用每次去获取BOOTINFO中的启动信息
+    top: 最顶层图层高度
+    layersorted: 图层根据高度升序排序索引
+    layer: 图层
+*/
+struct LAYERCTL {
+    unsigned char *vram;
+    int xsize, ysize, top;
+    struct LAYER *layersorted[MAX_LAYERS];
+    struct LAYER layer[MAX_LAYERS];
+};
+struct LAYERCTL *layerctl_init(struct MEMMNG *memmng, unsigned char *vram, int xsize, int ysize);
+struct LAYER *layer_alloc(struct LAYERCTL * ctl);
+void layer_init(struct LAYER *layer, unsigned char *buf, int xsize, int ysize, int col_inv);
+void layer_refresh(struct LAYERCTL *ctl, struct LAYER *layer, int bx0, int by0, int bx1, int by1);
+void layer_refresh_abs(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1);
+void layer_updown(struct LAYERCTL *ctl, struct LAYER *layer, int height);
+void layer_slide(struct LAYERCTL *ctl, struct LAYER *layer, int vx0, int vy0);
+void layer_free(struct LAYERCTL *ctl, struct LAYER *layer);

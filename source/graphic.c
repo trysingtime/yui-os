@@ -172,7 +172,7 @@ void init_mouse_cursor8(char *mouse, char bc) {
                 mouse[y * 16 + x] = COL8_000000;
             }
             // 字体
-            if (cursor[y][x] == '0') {
+            if (cursor[y][x] == 'O') {
                 mouse[y * 16 + x] = COL8_FFFFFF;
             }
             // 背景

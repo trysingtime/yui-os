@@ -46,12 +46,12 @@ void HariMain(void) {
     init_screen8(buf_back, bootinfo -> screenx, bootinfo -> screeny); // 绘制背景
     init_mouse_cursor8(buf_mouse, 99); // 绘制鼠标指针(图层颜色设置为未使用的99, 鼠标背景颜色也设置为99, 两者相同则透明)
 
-    layer_slide(layerctl, layer_mouse, 0, 0); // 移动鼠标图层到(0, 0)并刷新所有图层
-    layer_updown(layerctl, layer_back, 0); // 切换背景图层高度并刷新所有图层
-    layer_updown(layerctl, layer_mouse, 1); // 切换鼠标图层高度并刷新所有图层
+    layer_slide(layer_mouse, 0, 0); // 移动鼠标图层到(0, 0)并刷新所有图层
+    layer_updown(layer_back, 0); // 切换背景图层高度并刷新所有图层
+    layer_updown(layer_mouse, 1); // 切换鼠标图层高度并刷新所有图层
     mx = (bootinfo -> screenx - 16) / 2; // 计算屏幕中间点(减去指针本身)
     my = (bootinfo -> screeny - 28 - 16) / 2; // 计算屏幕中间点(减去任务栏和指针本身)
-    layer_slide(layerctl, layer_mouse, mx, my); // 移动鼠标图层到屏幕中点
+    layer_slide(layer_mouse, mx, my); // 移动鼠标图层到屏幕中点
 
     // 绘制鼠标坐标(背景图层)
     sprintf(s, "(%3d, %3d)", mx, my);
@@ -60,13 +60,13 @@ void HariMain(void) {
     sprintf(s, "memory %dMB     free : %dKB", memorytotal / (1024 * 1024), free_memory_total(mng) / 1024);
 	putfonts8_asc(buf_back, bootinfo->screenx, 0, 32, COL8_FFFFFF, s);
     // 刷新图层
-    layer_refresh(layerctl, layer_back, 0, 0, bootinfo->screenx, 48);
+    layer_refresh(layer_back, 0, 0, bootinfo->screenx, 48);
     // 绘制字符串(背景图层)
  	// putfonts8_asc(bootinfo->vram, bootinfo->screenx,  8,  8, COL8_FFFFFF, "ABC 123");
 	putfonts8_asc(buf_back, bootinfo->screenx, 101, 71, COL8_000000, "Haribote OS."); // 文字阴影效果
 	putfonts8_asc(buf_back, bootinfo->screenx, 100, 70, COL8_FFFFFF, "Haribote OS.");
     // 刷新图层
-    layer_refresh(layerctl, layer_back, 100, 70, 71 + 15 * 8 - 1, 86);
+    layer_refresh(layer_back, 100, 70, 71 + 15 * 8 - 1, 86);
 
 // 键盘和鼠标输入处理
     for (;;) {
@@ -82,7 +82,7 @@ void HariMain(void) {
                 boxfill8(buf_back, bootinfo->screenx, COL8_008484, 0, 16, 15, 31); // 擦除原有数据(绘制背景色矩形遮住之前绘制好的数据)
                 sprintf(s, "%02X", i);
                 putfonts8_asc(buf_back, bootinfo->screenx, 0, 16, COL8_FFFFFF, s); // 显示新的数据
-                layer_refresh(layerctl, layer_back, 0, 16, 15, 31);
+                layer_refresh(layer_back, 0, 16, 15, 31);
             } else if (fifo8_status(&mousefifo) != 0) {
                 i = fifo8_get(&mousefifo);
                 io_sti();
@@ -103,7 +103,7 @@ void HariMain(void) {
                     // 显示鼠标数据
                     boxfill8(buf_back, bootinfo->screenx, COL8_008484, 32, 16, 32 + 15 * 8 - 1, 31); // 擦除原有数据(绘制背景色矩形遮住之前绘制好的数据)
                     putfonts8_asc(buf_back, bootinfo->screenx, 32, 16, COL8_FFFFFF, s); // 显示新的数据
-                    layer_refresh(layerctl, layer_back, 32, 16, 32 + 15 * 8 - 1, 31);
+                    layer_refresh(layer_back, 32, 16, 32 + 15 * 8 - 1, 31);
 
                     // 显示鼠标指针移动
                     // 计算鼠标x, y轴的数值, 基于屏幕中心点
@@ -116,19 +116,20 @@ void HariMain(void) {
                     if (my < 0) {
                         my = 0;
                     }
-                    if (mx > bootinfo->screenx - 16) {
-                        mx = bootinfo->screenx - 16;
+                    // 鼠标可以超出右边和底边, 直到保留一个像素
+                    if (mx > bootinfo->screenx - 1) {
+                        mx = bootinfo->screenx - 1;
                     }
-                    if (my > bootinfo->screeny - 16) {
-                        my = bootinfo->screeny - 16;
+                    if (my > bootinfo->screeny - 1) {
+                        my = bootinfo->screeny - 1;
                     }
                     // 显示鼠标坐标数据
                     sprintf(s, "(%3d, %3d)", mx, my);
                     boxfill8(buf_back, bootinfo -> screenx, COL8_008484, 0, 0, 79, 15); // 擦除原有坐标(绘制背景色矩形遮住之前绘制好的坐标)
                     putfonts8_asc(buf_back, bootinfo->screenx, 0, 0, COL8_FFFFFF, s); // 显示新的坐标
-                    layer_refresh(layerctl, layer_back, 0, 0, 79, 15);
+                    layer_refresh(layer_back, 0, 0, 79, 15);
                     // 移动鼠标
-                    layer_slide(layerctl, layer_mouse, mx, my); // 显示鼠标
+                    layer_slide(layer_mouse, mx, my); // 显示鼠标
                 }
             }
         }

@@ -208,6 +208,7 @@ int memory_free_4k(struct MEMMNG *mng, unsigned int addr, unsigned int size);
 struct LAYER {
     unsigned char *buf;
     int bxsize, bysize, vx0, vy0, col_inv, height, flags;
+    struct LAYERCTL *ctl;
 };
 /*
     图层管理
@@ -225,8 +226,8 @@ struct LAYERCTL {
 struct LAYERCTL *layerctl_init(struct MEMMNG *memmng, unsigned char *vram, int xsize, int ysize);
 struct LAYER *layer_alloc(struct LAYERCTL * ctl);
 void layer_init(struct LAYER *layer, unsigned char *buf, int xsize, int ysize, int col_inv);
-void layer_refresh(struct LAYERCTL *ctl, struct LAYER *layer, int bx0, int by0, int bx1, int by1);
+void layer_refresh(struct LAYER *layer, int bx0, int by0, int bx1, int by1);
 void layer_refresh_abs(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1);
-void layer_updown(struct LAYERCTL *ctl, struct LAYER *layer, int height);
-void layer_slide(struct LAYERCTL *ctl, struct LAYER *layer, int vx0, int vy0);
-void layer_free(struct LAYERCTL *ctl, struct LAYER *layer);
+void layer_updown( struct LAYER *layer, int height);
+void layer_slide(struct LAYER *layer, int vx0, int vy0);
+void layer_free(struct LAYER *layer);

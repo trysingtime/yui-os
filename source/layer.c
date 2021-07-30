@@ -19,6 +19,7 @@ struct LAYERCTL *layerctl_init(struct MEMMNG *memmng, unsigned char *vram, int x
     ctl->top = -1;
     for (i = 0; i < MAX_LAYERS; i++) {
         ctl->layer[i].flags = 0; // 标志为未使用
+        ctl->layer[i].ctl = ctl; // 将图层管理绑定到每个图层
     }
 err:
     return ctl;
@@ -62,9 +63,9 @@ void layer_init(struct LAYER *layer, unsigned char *buf, int xsize, int ysize, i
     layer: 基于哪个图层的初始位置
     bx0~by0, bx1~by1: 相对于图层初始位置的矩形范围坐标
 */
-void layer_refresh(struct LAYERCTL *ctl, struct LAYER *layer, int bx0, int by0, int bx1, int by1) {
+void layer_refresh(struct LAYER *layer, int bx0, int by0, int bx1, int by1) {
     if (layer->height >= 0) {
-        layer_refresh_abs(ctl, layer->vx0 + bx0, layer->vy0 + by0, layer->vx0 + bx1, layer->vy0 + by1);
+        layer_refresh_abs(layer->ctl, layer->vx0 + bx0, layer->vy0 + by0, layer->vx0 + bx1, layer->vy0 + by1);
     }
     return;
 }
@@ -78,6 +79,12 @@ void layer_refresh_abs(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1)
     int h, bx, by, vx, vy, bx0, by0, bx1, by1;
     unsigned char *buf, c, *vram = ctl->vram;
     struct LAYER *layer;
+    // 如果范围超出画面则修正
+    if (vx0 < 0) { vx0 = 0; }
+    if (vy0 < 0) { vy0 = 0; }
+    if (vx1 > ctl->xsize) { vx1 = ctl->xsize; }
+    if (vy1 > ctl->ysize) { vy1 = ctl->ysize; }
+
     // 从图层0层开始升序绘制
     for (h = 0; h <= ctl->top; h++) {
         layer = ctl->layersorted[h];
@@ -116,7 +123,8 @@ void layer_refresh_abs(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1)
     改变图层高度并刷新图层
     需要根据高度升序重建索引: layersorted
 */
-void layer_updown(struct LAYERCTL *ctl, struct LAYER *layer, int height) {
+void layer_updown(struct LAYER *layer, int height) {
+    struct LAYERCTL *ctl = layer->ctl;
     int h, old = layer->height; // 保存修改前图层高度
 
     // 如果指定高度过高或高低, 则进行修正
@@ -170,14 +178,14 @@ void layer_updown(struct LAYERCTL *ctl, struct LAYER *layer, int height) {
 /*
     改变图层坐标并刷新图层
 */
-void layer_slide(struct LAYERCTL *ctl, struct LAYER *layer, int vx0, int vy0) {
+void layer_slide(struct LAYER *layer, int vx0, int vy0) {
     int old_vx0 = layer->vx0, old_vy0 = layer->vy0;
     layer->vx0 = vx0;
     layer->vy0 = vy0;
     if (layer->height >=0) {
         // 图层正在显示则需刷新图层
-        layer_refresh_abs(ctl, old_vx0, old_vy0, old_vx0 + layer->bxsize, old_vy0 + layer->bysize);
-        layer_refresh_abs(ctl, vx0, vy0, vx0 + layer->bxsize, vy0 + layer->bysize);
+        layer_refresh_abs(layer->ctl, old_vx0, old_vy0, old_vx0 + layer->bxsize, old_vy0 + layer->bysize);
+        layer_refresh_abs(layer->ctl, vx0, vy0, vx0 + layer->bxsize, vy0 + layer->bysize);
     }
     return;
 }
@@ -186,10 +194,10 @@ void layer_slide(struct LAYERCTL *ctl, struct LAYER *layer, int vx0, int vy0) {
     释放已使用图层
     先隐层图层, 再修改已使用标识为0(未使用)
 */
-void layer_free(struct LAYERCTL *ctl, struct LAYER *layer) {
+void layer_free(struct LAYER *layer) {
     // 隐藏图层
     if (layer->height >= 0) {
-        layer_updown(ctl, layer, -1);
+        layer_updown(layer, -1);
     }
     // 修改已使用标识为0(未使用)
     layer->flags = 0;

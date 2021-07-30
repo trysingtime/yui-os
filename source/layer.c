@@ -65,7 +65,7 @@ void layer_init(struct LAYER *layer, unsigned char *buf, int xsize, int ysize, i
 */
 void layer_refresh(struct LAYER *layer, int bx0, int by0, int bx1, int by1) {
     if (layer->height >= 0) {
-        layer_refresh_abs(layer->ctl, layer->vx0 + bx0, layer->vy0 + by0, layer->vx0 + bx1, layer->vy0 + by1);
+        layer_refresh_abs(layer->ctl, layer->vx0 + bx0, layer->vy0 + by0, layer->vx0 + bx1, layer->vy0 + by1, layer->height);
     }
     return;
 }
@@ -74,8 +74,9 @@ void layer_refresh(struct LAYER *layer, int bx0, int by0, int bx1, int by1) {
     根据绝对坐标刷新矩形范围图层
     ctl: 图层管理
     vx0~vx1, vy0~vy1: 指定矩形范围坐标
+    h0: 刷新大于此层的图层
 */
-void layer_refresh_abs(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1) {
+void layer_refresh_abs(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1, int h0) {
     int h, bx, by, vx, vy, bx0, by0, bx1, by1;
     unsigned char *buf, c, *vram = ctl->vram;
     struct LAYER *layer;
@@ -85,8 +86,8 @@ void layer_refresh_abs(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1)
     if (vx1 > ctl->xsize) { vx1 = ctl->xsize; }
     if (vy1 > ctl->ysize) { vy1 = ctl->ysize; }
 
-    // 从图层0层开始升序绘制
-    for (h = 0; h <= ctl->top; h++) {
+    // 从图层h0层开始升序绘制
+    for (h = h0; h <= ctl->top; h++) {
         layer = ctl->layersorted[h];
         buf = layer->buf;
 
@@ -171,7 +172,7 @@ void layer_updown(struct LAYER *layer, int height) {
             ctl->top++;
         }
     }
-    layer_refresh_abs(ctl, layer->vx0, layer->vy0, layer->vx0 + layer->bxsize, layer->vy0 + layer->bysize); // 改变图层高度, 刷新整个图层
+    layer_refresh_abs(ctl, layer->vx0, layer->vy0, layer->vx0 + layer->bxsize, layer->vy0 + layer->bysize, height); // 改变图层高度, 刷新整个图层
     return;
 }
 
@@ -184,8 +185,8 @@ void layer_slide(struct LAYER *layer, int vx0, int vy0) {
     layer->vy0 = vy0;
     if (layer->height >=0) {
         // 图层正在显示则需刷新图层
-        layer_refresh_abs(layer->ctl, old_vx0, old_vy0, old_vx0 + layer->bxsize, old_vy0 + layer->bysize);
-        layer_refresh_abs(layer->ctl, vx0, vy0, vx0 + layer->bxsize, vy0 + layer->bysize);
+        layer_refresh_abs(layer->ctl, old_vx0, old_vy0, old_vx0 + layer->bxsize, old_vy0 + layer->bysize, 0); // 移动后, 原有位置所有图层需要刷新
+        layer_refresh_abs(layer->ctl, vx0, vy0, vx0 + layer->bxsize, vy0 + layer->bysize, layer->height); // 移动后, 目标位置只需刷新大于该图层高度的图层
     }
     return;
 }

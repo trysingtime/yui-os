@@ -39,7 +39,8 @@ int mouse_decode(struct MOUSE_DEC *mdec, unsigned char data) {
             mdec->phase = 1;
         }
         return 0;
-    } else if (mdec->phase == 1) {
+    }
+    if (mdec->phase == 1) {
         // 鼠标第一字节
         if ((data & 0xc8) == 0x08) {
             // 鼠标第一字节必须符合(0x00xx1xxx)格式, 第4,5位(低位起)与移动相关, 第0~2位(低位起)与点击相关
@@ -48,12 +49,14 @@ int mouse_decode(struct MOUSE_DEC *mdec, unsigned char data) {
             mdec->phase = 2;
         }
         return 0;
-    } else if (mdec->phase == 2) {
+    }
+    if (mdec->phase == 2) {
         // 鼠标第二字节(x轴)
         mdec->buf[1] = data;
         mdec->phase = 3;
         return 0;
-    } else if (mdec->phase == 3) {
+    }
+    if (mdec->phase == 3) {
         // 鼠标第三字节(y轴)
         mdec->buf[2] = data;
         mdec->phase = 1;

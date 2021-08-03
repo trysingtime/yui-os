@@ -26,6 +26,7 @@ void load_gdtr(int limit, int addr); // 把已知的GDT起始地址和段个数�
 void load_idtr(int limit, int addr); // 把已知的IDT起始地址和中断个数加载到IDTR寄存器
 int load_cr0(void); // CR0寄存器(32位),bit30+bit29置1禁止缓存,bit31置为0禁用分页,bit0置为1切换到保护模式
 void store_cr0(int cr0);
+void asm_inthandler20(void); // 定时器中断处理函数
 void asm_inthandler21(void); // 键盘中断处理函数
 void asm_inthandler27(void); // 电气噪声处理函数
 void asm_inthandler2c(void); // 鼠标中断处理函数
@@ -124,7 +125,7 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int acce
 /* int.c */
 
 void init_pic(void); // 初始化PIC
-void inthandler2c(int *esp); // 电气噪声处理函数
+void inthandler27(int *esp); // 电气噪声处理函数
 #define PIC0_IMR		0x0021  // IMR(interrupt mask register)地址: PIC的8位寄存器
 /* 
     ICW(initial control word): 有4个(ICW1-ICW4)
@@ -159,7 +160,7 @@ struct MOUSE_DEC {
     unsigned char buf[3], phase; // 缓冲鼠标数据, 鼠标阶段
     int x, y, btn; // 鼠标x轴, y轴, 按键
 };
-void inthandler27(int *esp); // 鼠标中断处理函数
+void inthandler2c(int *esp); // 鼠标中断处理函数
 void enable_mouse(struct MOUSE_DEC *mdec);
 int mouse_decode(struct MOUSE_DEC *mdec, unsigned char data);
 extern struct FIFO8 mousefifo;
@@ -212,10 +213,10 @@ struct LAYER {
 };
 /*
     图层管理
-    vram, xsiez, ysize: vram地址和画面大小, 不用每次去获取BOOTINFO中的启动信息
-    top: 最顶层图层高度
-    layersorted: 图层根据高度升序排序索引
-    layer: 图层
+    - vram, xsiez, ysize: vram地址和画面大小, 不用每次去获取BOOTINFO中的启动信息
+    - top: 最顶层图层高度
+    - layersorted: 图层根据高度升序排序索引
+    - layer: 图层
 */
 struct LAYERCTL {
     unsigned char *vram, *map;
@@ -232,3 +233,37 @@ void layer_refresh_map(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1,
 void layer_updown( struct LAYER *layer, int height);
 void layer_slide(struct LAYER *layer, int vx0, int vy0);
 void layer_free(struct LAYER *layer);
+
+/* timer.c */
+
+#define MAX_TIMER       500 // 定时器上限数
+/*
+    定时器
+    - timeout: 倒计时
+    - fifo, data: 倒计时结束后往fifo缓冲区发送数据data
+*/
+struct TIMER {
+    unsigned int timeout, flags;
+    struct FIFO8 *fifo;
+    unsigned char data;
+};
+/*
+    定时器管理
+    - count: 计时(每秒100)
+    - next: 下一个触发时刻(单位同count)
+    - using: 正在使用的定时器数量
+    - timersorted: 根据定时时间升序排列的定时器索引
+    - timer: 定时器
+*/
+struct TIMERCTL {
+    unsigned int count, next, using;
+    struct TIMER *timersorted[MAX_TIMER];
+    struct TIMER timer[MAX_TIMER];
+};
+extern struct TIMERCTL timerctl;
+void init_pic(void);
+struct TIMER *timer_alloc(void);
+void timer_free(struct TIMER *timer);
+void timer_init(struct TIMER *timer, struct FIFO8 *fifo, unsigned char data);
+void timer_settime(struct TIMER *timer, unsigned int timeout);
+void inthandler20(int *esp);

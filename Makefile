@@ -1,9 +1,10 @@
 # 变量
 OBJS_BOOTPACK = bootpack.obj naskfunc.obj hankaku.obj graphic.obj dsctbl.obj int.obj \
-				fifo.obj keyboard.obj mouse.obj memory.obj layer.obj
+				fifo.obj keyboard.obj mouse.obj memory.obj layer.obj timer.obj
 OBJS_BOOTPACK_TARGET = target\bootpack.obj target\naskfunc.obj target\hankaku.obj \
 						target\graphic.obj target\dsctbl.obj target\int.obj target\fifo.obj \
-						target\keyboard.obj target\mouse.obj target\memory.obj target\layer.obj
+						target\keyboard.obj target\mouse.obj target\memory.obj target\layer.obj \
+						target\timer.obj
 
 TOOLPATH = tolset/z_tools/
 INCPATH  = tolset/z_tools/haribote/

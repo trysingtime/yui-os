@@ -15,9 +15,9 @@
         GLOBAL _write_mem8, _read_mem8
         GLOBAL _load_gdtr, _load_idtr
         GLOBAL _load_cr0, _store_cr0
-        GLOBAL _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
+        GLOBAL _asm_inthandler20, _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
         GLOBAL _memtest_sub
-	EXTERN _inthandler21, _inthandler27, _inthandler2c
+	EXTERN _inthandler20, _inthandler21, _inthandler27, _inthandler2c
 
 [SECTION .text]             ; 目标文件中写了这些之后再写程序
 
@@ -135,7 +135,24 @@ _store_cr0:     ; void store_cr0(int cr0);
         MOV     CR0,EAX
         RET
 
-; 调用C语言inthandler21方法
+; 调用C语言inthandler20方法(定时器中断)
+_asm_inthandler20:
+        PUSH	ES
+        PUSH	DS
+        PUSHAD
+        MOV	EAX,ESP                 
+        PUSH	EAX
+        MOV	AX,SS                   ; 调用C语言函数前, SS,DS,ES设置成相同(C语言规范)
+        MOV	DS,AX                   
+        MOV	ES,AX
+        CALL	_inthandler20
+        POP	EAX
+        POPAD
+        POP	DS
+        POP	ES
+        IRETD
+
+; 调用C语言inthandler21方法(来自PS/2键盘的中断)
 _asm_inthandler21:
         PUSH	ES
         PUSH	DS
@@ -152,7 +169,7 @@ _asm_inthandler21:
         POP	ES
         IRETD
 
-; 调用C语言inthandler27方法
+; 调用C语言inthandler27方法(电气噪声中断)
 _asm_inthandler27:
         PUSH	ES
         PUSH	DS
@@ -169,7 +186,7 @@ _asm_inthandler27:
         POP	ES
         IRETD
 
-; 调用C语言inthandler2c方法
+; 调用C语言inthandler2c方法(来自PS/2鼠标的中断)
 _asm_inthandler2c:
         PUSH	ES
         PUSH	DS

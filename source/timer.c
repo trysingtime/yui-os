@@ -1,0 +1,139 @@
+/*
+    定时器由专门的硬件PIT(Programmable Interval Timer)管理,
+    通过设定PIT让定时器每隔多少秒产生一次中断, 
+    PIT连接IRQ0
+*/
+
+#include "bootpack.h"
+
+#define PIT_CTRL    0x0043 // PIT管理端口
+#define PIT_CNT0    0x0040 // PIT设定端口
+
+struct TIMERCTL timerctl; // 计时管理
+
+#define TIMER_FLAGS_INACTIVE    0 //定时器标志: 未启用
+#define TIMER_FLAGS_ALLOC       1 //定时器标志: 已启用
+#define TIMER_FLAGS_USING       2 //定时器标志: 运行中
+
+/*
+    初始化PIT
+    进入PIT设定模式, 设置中断周期
+    中断频率=主频/设定值, 定时器8254芯片主频为1193180Hz, 因此设定值设为11932(0x2e9c), 中断频率大约为100Hz, 也即10ms一次中断
+*/
+void init_pit(void) {
+    io_out8(PIT_CTRL, 0x34); // 进入PIT设定模式
+    io_out8(PIT_CNT0, 0x9c); // 输入中断周期低8位
+    io_out8(PIT_CNT0, 0x2e); // 输入中断周期高8位
+    timerctl.count = 0; // 初始计时0
+    timerctl.next = 0xffffffff; // 将下一时刻最大化(默认下一时刻不存在, 若存在则后续再设置)
+    timerctl.using = 0; // 初始化正在运行的定时器数量为0
+
+    // 初始化所有定时器
+    int i;
+    for (i = 0; i < MAX_TIMER; i++) {
+        timerctl.timer[i].flags = TIMER_FLAGS_INACTIVE; // 初始定时器标志为0, 不启用
+    }
+    return;
+}
+
+/*
+    初始化定时器
+    fifo, data: 定时器触发后往fifo缓冲区发送数据data
+*/
+void timer_init(struct TIMER *timer, struct FIFO8 *fifo, unsigned char data) {
+    timer->fifo = fifo;
+    timer->data = data;
+    return;
+}
+
+/*
+    获取一个未启用的定时器
+    遍历所有定时器, 返回状态未未启用的一个定时器
+*/
+struct TIMER *timer_alloc(void) {
+    int i;
+    for (i = 0; i < MAX_TIMER; i++) {
+        if (timerctl.timer[i].flags == TIMER_FLAGS_INACTIVE) {
+            timerctl.timer[i].flags = TIMER_FLAGS_ALLOC;
+            return &timerctl.timer[i];
+        }
+    }
+    return 0;
+}
+
+/*
+    释放定时器
+    将指定定时器的状态改为未启用
+*/
+void timer_free(struct TIMER *timer) {
+    timer->flags = TIMER_FLAGS_INACTIVE;
+    return;
+}
+
+/*
+    设置定时器
+    - timeout: 倒计时, 秒数为timeout/100
+*/
+void timer_settime(struct TIMER *timer, unsigned int timeout) {
+    int e, i, j;
+    timer->timeout = timeout + timerctl.count; // 这里使用正计时来实现倒计时效果
+    timer->flags = TIMER_FLAGS_USING;
+    // 注册索引前关闭中断
+    e = io_load_eflags();
+    io_cli();
+    // 注册定时器到索引(timersorted)
+    // 升序查找当前定时器在索引中的位置i
+    for (i = 0; i < timerctl.using; i++) {
+        if (timerctl.timersorted[i]->timeout >= timer->timeout) {
+            break;
+        }
+    }
+    // 将大于位置i的索引全部后移一位
+    for (j = timerctl.using; j > i; j--) {
+        timerctl.timersorted[j] = timerctl.timersorted[j - 1];
+    }
+    // 插入当前定时器到索引
+    timerctl.using++;
+    timerctl.timersorted[i] = timer;
+    timerctl.next = timerctl.timersorted[0]->timeout;
+    // 还原中断
+    io_store_eflags(e);
+    return;
+}
+
+/* 来自定时器的中断(IRQ0, INT 0x20)*/
+void inthandler20(int *esp) {
+    io_out8(PIC0_OCW2, 0x60); // 通知PIC0(IRQ01~07)/IRQ-00(定时器中断)已接收到中断, 继续监听下一个中断
+    timerctl.count++;
+
+    // 未到下一个指定时刻
+    if (timerctl.next > timerctl.count) {
+        return;
+    }
+
+    // 已到下一个指定时刻, 遍历运行中的定时器, 判断是哪些定时器(可能同时触发多个)
+    int i, j;
+    for (i = 0; i < timerctl.using; i++) {
+        if (timerctl.timersorted[i]->timeout > timerctl.count) {
+            // 后续定时器时刻未到, 退出循环
+            break;
+        }
+        // 该定时器时刻已到, 往fifo缓冲区发送数据
+        timerctl.timersorted[i]->flags = TIMER_FLAGS_ALLOC;
+        fifo8_put(timerctl.timersorted[i]->fifo, timerctl.timersorted[i]->data);
+    }
+
+    // 有i个定时器同时被触发了, 剩余正在运行状态的定时器重新建立索引
+    timerctl.using -= i;
+    for (j = 0; j < timerctl.using; j++) {
+        timerctl.timersorted[j] = timerctl.timersorted[i + j];
+    }
+
+    // 确定下一个定时器时刻
+    if (timerctl.using > 0) {
+        timerctl.next = timerctl.timersorted[0]->timeout;
+    } else {
+        timerctl.next = 0xffffffff; // 将下一时刻最大化(默认下一时刻不存在, 若存在则后续再设置)
+    }
+    return;
+}

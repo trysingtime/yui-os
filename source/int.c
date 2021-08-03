@@ -11,7 +11,7 @@ void init_pic(void) {
 
     /* 
         ICW(initial control word): 有4个(ICW1-ICW4)
-        - ICW1和ICW4配置与PIC主板的配线方式, 根据硬件已固定
+	- ICW1和ICW4配置与PIC主板的配线方式, 根据硬件已固定
         - ICW3(8位)每位置为1对应一个从PIC, 根据硬件已固定
         - ICW2(8位)决定IRQ触发时哪一个中断信号(例如INT 0x20), CPU根据IDT设置调用中断处理函数(需自己配置IDT和编写该处理函数)
     */ 

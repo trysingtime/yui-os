@@ -24,15 +24,29 @@ void init_pit(void) {
     io_out8(PIT_CTRL, 0x34); // 进入PIT设定模式
     io_out8(PIT_CNT0, 0x9c); // 输入中断周期低8位
     io_out8(PIT_CNT0, 0x2e); // 输入中断周期高8位
-    timerctl.count = 0; // 初始计时0
-    timerctl.next = 0xffffffff; // 将下一时刻最大化(默认下一时刻不存在, 若存在则后续再设置)
-    timerctl.using = 0; // 初始化正在运行的定时器数量为0
 
     // 初始化所有定时器
     int i;
     for (i = 0; i < MAX_TIMER; i++) {
         timerctl.timer[i].flags = TIMER_FLAGS_INACTIVE; // 初始定时器标志为0, 不启用
     }
+
+    // 初始化哨兵
+    /* 
+        定义一个兜底的定时器, 确保永远会有一个定时器在队列, 但永远不会(或者非常难以)触发 
+        这样的话, 新增一个定时器需要的分支从4种(唯一的定时器, 最早触发的定时器, 中间触发的定时器, 最后触发的定时器)
+        变成2种(最早触发的定时器, 中间触发的定时器)
+    */
+    struct TIMER *t;
+    t = timer_alloc();
+    t->next = 0; // 哨兵就是最后一个定时器
+    t->timeout = 0xffffffff; // 将下一时刻最大化(保证不会被触发)
+    t->flags = TIMER_FLAGS_USING;
+
+    // 初始化定时控制器
+    timerctl.count = 0; // 初始计时0
+    timerctl.nextnode = t; // 初始化下一节点为哨兵
+    timerctl.nexttime = t->timeout; // 初始化下一触发时刻为哨兵时刻
     return;
 }
 
@@ -40,7 +54,7 @@ void init_pit(void) {
     初始化定时器
     fifo, data: 定时器触发后往fifo缓冲区发送数据data
 */
-void timer_init(struct TIMER *timer, struct FIFO8 *fifo, unsigned char data) {
+void timer_init(struct TIMER *timer, struct FIFO32 *fifo, int data) {
     timer->fifo = fifo;
     timer->data = data;
     return;
@@ -72,33 +86,46 @@ void timer_free(struct TIMER *timer) {
 
 /*
     设置定时器
+    - timer: 指定的定时器
     - timeout: 倒计时, 秒数为timeout/100
 */
 void timer_settime(struct TIMER *timer, unsigned int timeout) {
-    int e, i, j;
     timer->timeout = timeout + timerctl.count; // 这里使用正计时来实现倒计时效果
     timer->flags = TIMER_FLAGS_USING;
     // 注册索引前关闭中断
+    int e;
     e = io_load_eflags();
     io_cli();
-    // 注册定时器到索引(timersorted)
-    // 升序查找当前定时器在索引中的位置i
-    for (i = 0; i < timerctl.using; i++) {
-        if (timerctl.timersorted[i]->timeout >= timer->timeout) {
-            break;
+    // 注册定时器到定时控制器
+    /*由于哨兵的存在, 新增定时器只有两种分支(最早触发的定时器, 中间触发的定时器)*/
+    struct TIMER *t, *s;
+    t = timerctl.nextnode;
+    /* 新增的此定时器最早触发 */
+    if (timer->timeout <= t->timeout) {
+        // 更新定时控制器
+        timerctl.nextnode = timer;
+        timerctl.nexttime = timer->timeout;
+        // 设置定时器下一节点
+        timer->next = t;
+        // 还原中断
+        io_store_eflags(e);
+        return;
+    }
+    /* 新增的此定时器需要遍历寻找插入位置 */
+    for (;;) {
+        s = t;
+        t = t->next;
+        if (timer->timeout <= t->timeout) {
+            /* 新增的此定时器定位于s和t之间 */
+            // 更新定时控制器
+            s->next = timer;
+            // 设置定时器下一节点
+            timer->next = t;
+            // 还原中断
+            io_store_eflags(e);
+            return;
         }
     }
-    // 将大于位置i的索引全部后移一位
-    for (j = timerctl.using; j > i; j--) {
-        timerctl.timersorted[j] = timerctl.timersorted[j - 1];
-    }
-    // 插入当前定时器到索引
-    timerctl.using++;
-    timerctl.timersorted[i] = timer;
-    timerctl.next = timerctl.timersorted[0]->timeout;
-    // 还原中断
-    io_store_eflags(e);
-    return;
 }
 
 /* 来自定时器的中断(IRQ0, INT 0x20)*/
@@ -107,33 +134,27 @@ void inthandler20(int *esp) {
     timerctl.count++;
 
     // 未到下一个指定时刻
-    if (timerctl.next > timerctl.count) {
+    if (timerctl.nexttime > timerctl.count) {
         return;
     }
 
-    // 已到下一个指定时刻, 遍历运行中的定时器, 判断是哪些定时器(可能同时触发多个)
-    int i, j;
-    for (i = 0; i < timerctl.using; i++) {
-        if (timerctl.timersorted[i]->timeout > timerctl.count) {
+    // 已到下一个指定时刻, 根据链表遍历定时器, 判断是哪些定时器(可能同时触发多个)
+    int i;
+    struct TIMER *timer;
+    timer = timerctl.nextnode;
+    for (;;) {
+        if (timer->timeout > timerctl.count) {
             // 后续定时器时刻未到, 退出循环
             break;
         }
         // 该定时器时刻已到, 往fifo缓冲区发送数据
-        timerctl.timersorted[i]->flags = TIMER_FLAGS_ALLOC;
-        fifo8_put(timerctl.timersorted[i]->fifo, timerctl.timersorted[i]->data);
+        timer->flags = TIMER_FLAGS_ALLOC;
+        fifo32_put(timer->fifo, timer->data);
+        timer = timer->next;
     }
 
-    // 有i个定时器同时被触发了, 剩余正在运行状态的定时器重新建立索引
-    timerctl.using -= i;
-    for (j = 0; j < timerctl.using; j++) {
-        timerctl.timersorted[j] = timerctl.timersorted[i + j];
-    }
-
-    // 确定下一个定时器时刻
-    if (timerctl.using > 0) {
-        timerctl.next = timerctl.timersorted[0]->timeout;
-    } else {
-        timerctl.next = 0xffffffff; // 将下一时刻最大化(默认下一时刻不存在, 若存在则后续再设置)
-    }
+    // 有i个定时器同时被触发了, 更新定时控制器信息
+    timerctl.nextnode = timer;
+    timerctl.nexttime = timerctl.nextnode->timeout;
     return;
 }

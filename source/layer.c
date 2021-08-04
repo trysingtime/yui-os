@@ -3,13 +3,15 @@
 #define LAYER_USED      1 // 图层已使用标识1
 
 /*
-    初始化图层管理
-    为图层管理分配内存, 将BOOTINFO里的vram地址和画面大小缓存到图层管理, 图层高度默认-1, 图层已使用标识默认0(未使用)
+    初始化图层控制器
+    为图层控制器分配内存, 将BOOTINFO里的vram地址和画面大小缓存到图层控制器中, 图层高度默认-1, 图层已使用标识默认0(未使用)
+    - memmng: 内存控制器
+    - vram, xsize, ysize: BOOTINFO里的vram地址和画面大小
 */
 struct LAYERCTL *layerctl_init(struct MEMMNG *memmng, unsigned char *vram, int xsize, int ysize) {
     struct LAYERCTL *ctl;
     int i;
-    // 为图层管理分配内存
+    // 为图层控制器分配内存
     ctl = (struct LAYERCTL *)memory_alloc_4k(memmng, sizeof(struct LAYERCTL));
     if (ctl == 0) {
         goto err;
@@ -25,14 +27,15 @@ struct LAYERCTL *layerctl_init(struct MEMMNG *memmng, unsigned char *vram, int x
     ctl->top = -1;
     for (i = 0; i < MAX_LAYERS; i++) {
         ctl->layers[i].flags = 0; // 标志为未使用
-        ctl->layers[i].ctl = ctl; // 将图层管理绑定到每个图层
+        ctl->layers[i].ctl = ctl; // 将图层控制器绑定到每个图层
     }
 err:
     return ctl;
 }
 
 /*
-    从图层管理中获取未使用的图层
+    从图层控制器中获取未使用的图层
+    - ctl: 图层控制器
 */
 struct LAYER *layer_alloc(struct LAYERCTL * ctl) {
     struct LAYER *layer;
@@ -50,10 +53,10 @@ struct LAYER *layer_alloc(struct LAYERCTL * ctl) {
 
 /*
     初始化图层
-    layer: 图层地址
-    buf: 图层内容地址
-    xsize, ysize: 图层大小
-    col_inv: 图层颜色和透明度
+    - layer: 图层地址
+    - buf: 图层内容地址
+    - xsize, ysize: 图层大小
+    - col_inv: 图层颜色和透明度
 */
 void layer_init(struct LAYER *layer, unsigned char *buf, int xsize, int ysize, int col_inv) {
     layer->buf = buf;
@@ -65,9 +68,9 @@ void layer_init(struct LAYER *layer, unsigned char *buf, int xsize, int ysize, i
 
 /*
     根据相对坐标刷新指定图层(矩形范围)
-    ctl: 图层管理
-    layer: 基于哪个图层的初始位置
-    bx0~by0, bx1~by1: 相对于图层初始位置的矩形范围坐标
+    - ctl: 图层控制器
+    - layer: 基于哪个图层的初始位置
+    - bx0~by0, bx1~by1: 相对于图层初始位置的矩形范围坐标
 */
 void layer_refresh(struct LAYER *layer, int bx0, int by0, int bx1, int by1) {
     if (layer->height >= 0) {
@@ -78,9 +81,9 @@ void layer_refresh(struct LAYER *layer, int bx0, int by0, int bx1, int by1) {
 
 /*
     根据绝对坐标刷新矩形范围内所有图层
-    ctl: 图层管理
-    vx0~vx1, vy0~vy1: 指定矩形范围坐标
-    h0~h1: 刷新指定高度范围的图层
+    - ctl: 图层控制器
+    - vx0~vx1, vy0~vy1: 指定矩形范围坐标
+    - h0~h1: 刷新指定高度范围的图层
 */
 void layer_refresh_abs(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1, int h0, int h1) {
     int h, bx, by, vx, vy, bx0, by0, bx1, by1;
@@ -127,9 +130,9 @@ void layer_refresh_abs(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1,
 /*
     根据绝对坐标刷新map(像素点)所负责的图层(矩形范围)
     图层map: 将屏幕每个像素点映射成map, 在map上记录该像素点由哪一图层(当前图层高度最大的层)负责显示
-    ctl: 图层管理
-    vx0~vx1, vy0~vy1: 指定矩形范围坐标
-    h0: 刷新大于此层的图层
+    - ctl: 图层控制器
+    - vx0~vx1, vy0~vy1: 指定矩形范围坐标
+    - h0: 刷新大于此层的图层
 */
 void layer_refresh_map(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1, int h0) {
     int h, bx, by, vx, vy, bx0, by0, bx1, by1;
@@ -182,6 +185,8 @@ void layer_refresh_map(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1,
     图层降低: 重绘上层(大于)图层~顶部图层
     图层隐藏: 重绘上层(大于)图层~顶部图层(-1)
     图层上升: 重绘本图层
+    - layer: 指定图层
+    - height: 指定高度
 */
 void layer_updown(struct LAYER *layer, int height) {
     struct LAYERCTL *ctl = layer->ctl;
@@ -242,6 +247,8 @@ void layer_updown(struct LAYER *layer, int height) {
 
 /*
     改变图层坐标并刷新图层
+    - layer: 指定图层
+    - vx0, vy0: 目的坐标
 */
 void layer_slide(struct LAYER *layer, int vx0, int vy0) {
     int old_vx0 = layer->vx0, old_vy0 = layer->vy0;
@@ -260,6 +267,7 @@ void layer_slide(struct LAYER *layer, int vx0, int vy0) {
 /*
     释放已使用图层
     先隐层图层, 再修改已使用标识为0(未使用)
+    - layer: 指定图层
 */
 void layer_free(struct LAYER *layer) {
     // 隐藏图层

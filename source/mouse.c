@@ -1,13 +1,15 @@
 #include "bootpack.h"
 
-struct FIFO8 mousefifo;
+struct FIFO32 *mousefifo; // 鼠标缓冲区地址
+int mouseoffsetdata; // 鼠标数据需加上该值放入缓冲区
+
 /* 来自PS/2鼠标的中断(IRQ12, INT 0x2c) */
 void inthandler2c(int *esp) {
 	unsigned char data;
 	io_out8(PIC1_OCW2, 0x64); // 通知PIC1(IRQ08~15)/IRQ-12(鼠标中断)已接收到中断, 继续监听下一个中断
 	io_out8(PIC0_OCW2, 0x62); // 通知PIC0(IRQ01~07)/IRQ-02(从PIC中断)已接收到中断, 继续监听下一个中断
 	data = io_in8(PORT_KEYDAT); // 从端口0x0060(鼠标)读取一个字节
-	fifo8_put(&mousefifo, data); // 将data写入缓冲区
+	fifo32_put(&mousefifo, mouseoffsetdata + data); // 将data(实际只有1字节)写入缓冲区
 	return;
 }
 
@@ -17,8 +19,15 @@ void inthandler2c(int *esp) {
     启用鼠标本身
     启用鼠标需要使启用鼠标控制电路和鼠标本身, 鼠标控制电路包含于键盘控制电路中, 
         因此启用鼠标需先初始化键盘控制电路, 再使鼠标本身启用, 此处实现后者
+    - fifo: 缓冲区地址
+    - offsetdata: 鼠标数据需加上该值放入缓冲区(一般偏移512)
+    - mdec: 鼠标结构体地址
 */
-void enable_mouse(struct MOUSE_DEC *mdec) {
+void enable_mouse(struct FIFO32 *fifo, int offsetdata, struct MOUSE_DEC *mdec) {
+    // 将FIFO缓冲区信息保存到全局变量
+    mousefifo = fifo;
+    mouseoffsetdata = offsetdata;
+
     wait_KBC_sendready(); // 等待键盘控制电路准备完毕
     // 使键盘控制电路(0x0064)进入鼠标控制电路模式(0xd4), 下一个数据会自动发送给鼠标
     io_out8(PORT_KEYCMD, KEYCMD_SENDTO_MOUSE);
@@ -31,6 +40,8 @@ void enable_mouse(struct MOUSE_DEC *mdec) {
 
 /*
     解码鼠标输入
+    - mdec: 鼠标结构体地址
+    - data: 鼠标读取的数据
 */
 int mouse_decode(struct MOUSE_DEC *mdec, unsigned char data) {
     if (mdec->phase == 0) {

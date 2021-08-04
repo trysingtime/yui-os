@@ -8,6 +8,8 @@
     禁用CPU(486及以上)缓存
     内存容量检查前需禁用CPU缓存, 禁用CPU缓冲需先判断CPU是否存在缓存, 
     486CPU及以上才存在缓冲, 可以通过EFLAGS寄存器(32位)的AC_BIT(18bit)判断CPU
+    - start: 起始内存地址
+    - end: 终止内存地址
 */
 unsigned int memtest(unsigned int start, unsigned int end) {
     char flag486 = 0;
@@ -45,6 +47,8 @@ unsigned int memtest(unsigned int start, unsigned int end) {
 
 /*
     内存容量检查(编译器会优化此方法, 导致此方法无效, 使用汇编方法memtest_sub替代)
+    - start: 起始内存地址
+    - end: 终止内存地址
 */
 unsigned int memtest_sub_c(unsigned int start, unsigned int end) {
     /*
@@ -81,7 +85,8 @@ not_memory:
 }
 
 /*
-    初始化"内存空闲信息-汇总"
+    初始化内存控制器
+    - mng: 需要初始化的内存控制器
 */
 void memmng_init(struct MEMMNG *mng) {
     mng->rows = 0;
@@ -93,6 +98,7 @@ void memmng_init(struct MEMMNG *mng) {
 
 /*
     空闲内存总和
+    - mng: 内存控制器
 */
 unsigned int free_memory_total(struct MEMMNG *mng) {
     unsigned int i, total = 0;
@@ -106,6 +112,8 @@ unsigned int free_memory_total(struct MEMMNG *mng) {
     分配指定大小的内存
     遍历内存空闲信息, 找出第一条空闲内存大于所需内存的记录, 将内存空闲记录的起始空间分配出去, 剩余空间重新记录,
     若剩余空间为0, 则删除该记录, 后续记录依次前移
+    - mng: 内存控制器
+    - size: 需分配的内存大小
 */
 unsigned int memory_alloc(struct MEMMNG *mng, unsigned int size) {
     unsigned int i, a;
@@ -132,6 +140,9 @@ unsigned int memory_alloc(struct MEMMNG *mng, unsigned int size) {
 /*
     释放指定起始地址和大小的内存
     新增一条内存空闲信息记录, 若释放的内存段能与前后内存空闲信息段相连, 则添加到那些记录上, 无需新增记录
+    - mng: 内存控制器
+    - addr: 需释放内存的起始地址
+    - size: 需释放内存的大小
 */
 int memory_free(struct MEMMNG *mng, unsigned int addr, unsigned int size) {
     int i, j;
@@ -188,6 +199,8 @@ int memory_free(struct MEMMNG *mng, unsigned int addr, unsigned int size) {
 /*
     分配指定大小的内存(最小单位4KB)
     memory_alloc()以1字节为单位, 内存划分的过于细碎, 很容易超出记录上限
+    - mng: 内存控制器
+    - size: 需分配的内存大小
 */
 unsigned int memory_alloc_4k(struct MEMMNG *mng, unsigned int size) {
     unsigned int a;
@@ -208,6 +221,9 @@ unsigned int memory_alloc_4k(struct MEMMNG *mng, unsigned int size) {
 /*
     释放指定起始地址和大小的内存(最小单位4KB)
     memory_free()以1字节为单位, 内存划分的过于细碎, 很容易超出记录上限
+    - mng: 内存控制器
+    - addr: 需释放内存的起始地址
+    - size: 需释放内存的大小
 */
 int memory_free_4k(struct MEMMNG *mng, unsigned int addr, unsigned int size) {
     int i;

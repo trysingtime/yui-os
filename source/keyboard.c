@@ -1,12 +1,14 @@
 #include "bootpack.h"
 
-struct FIFO8 keyfifo;
+struct FIFO32 *keyfifo; // 键盘缓冲区地址
+int keyoffsetdata; // 键盘数据需加上该值放入缓冲区
+
 /* 来自PS/2键盘的中断(IRQ1, INT 0x21)*/
 void inthandler21(int *esp) {
-	unsigned char data;
+	int data;
 	io_out8(PIC0_OCW2, 0x61); // 通知PIC0(IRQ01~07)/IRQ-01(键盘中断)已接收到中断, 继续监听下一个中断
 	data = io_in8(PORT_KEYDAT); // 从端口0x0060(键盘)读取一个字节
-	fifo8_put(&keyfifo, data); // 将data写入缓冲区
+	fifo32_put(&keyfifo, keyoffsetdata + data); // 将data(实际只有1字节)写入缓冲区
 	return;
 }
 
@@ -29,8 +31,14 @@ void wait_KBC_sendready(void) {
 
 /*
     初始化键盘控制电路(同时也初始化了鼠标控制电路)
+    - fifo: 键盘缓冲区地址
+    - offsetdata: 键盘数据需加上该值放入缓冲区(一般偏移256)
 */
-void init_keyboard(void) {
+void init_keyboard(struct FIFO32 *fifo, int offsetdata) {
+    // 将FIFO缓冲区信息保存到全局变量
+    keyfifo = fifo;
+    keyoffsetdata = offsetdata;
+
     wait_KBC_sendready(); // 等待键盘控制电路准备完毕
     // 使键盘控制电路(0x0064)进入模式设定模式(0x60)
     io_out8(PORT_KEYCMD, KEYCMD_WRITE_MODE);

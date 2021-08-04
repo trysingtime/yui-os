@@ -35,14 +35,14 @@ unsigned int memtest_sub(unsigned int start, unsigned int end); // 内存容量�
 /* fifo.c */
 
 // 缓冲区结构
-struct FIFO8 {
-    unsigned char *buf; // 缓存区地址
+struct FIFO32 {
+    int *buf; // 缓存区地址
     int p, q, size, free, flags; // 写入位置, 读出位置, 缓存区总大小, 空余大小, 溢出标识 
 };
-void fifo8_init(struct FIFO8 *fifo, int size, unsigned char *buf); // 初始化缓冲区
-int fifo8_put(struct FIFO8 *fifo, unsigned char data); // 缓冲区写入1字节
-int fifo8_get(struct FIFO8 *fifo); // 缓冲区读出1字节
-int fifo8_status(struct FIFO8 *fifo); // 缓冲区当前深度
+void fifo32_init(struct FIFO32 *fifo, int size, int *buf); // 初始化缓冲区
+int fifo32_put(struct FIFO32 *fifo, int data); // 缓冲区写入1字节
+int fifo32_get(struct FIFO32 *fifo); // 缓冲区读出1字节
+int fifo32_status(struct FIFO32 *fifo); // 缓冲区当前深度
 
 /* graphic.c */
 
@@ -149,35 +149,36 @@ void inthandler27(int *esp); // 电气噪声处理函数
 
 void inthandler21(int *esp); // 键盘中断处理函数
 void wait_KBC_sendready(void);
-void init_keyboard(void);
-extern struct FIFO8 keyfifo;
+void init_keyboard(struct FIFO32 *fifo, int offsetdata);
 #define PORT_KEYDAT             0x0060      /* 数据端口(键盘/鼠标/A20GATE信号线) */
 #define PORT_KEYCMD             0x0064      /* 键盘控制器端口(用于设置) */
 
 /* mouse.c */
 
+/*
+    鼠标数据结构体
+*/
 struct MOUSE_DEC {
     unsigned char buf[3], phase; // 缓冲鼠标数据, 鼠标阶段
     int x, y, btn; // 鼠标x轴, y轴, 按键
 };
 void inthandler2c(int *esp); // 鼠标中断处理函数
-void enable_mouse(struct MOUSE_DEC *mdec);
+void enable_mouse(struct FIFO32 *fifo, int offsetdata, struct MOUSE_DEC *mdec);
 int mouse_decode(struct MOUSE_DEC *mdec, unsigned char data);
-extern struct FIFO8 mousefifo;
 
 /* memory.c */
 
 #define MEMMNG_ADDR     0x003c0000; // 内存管理表起始地址
 #define MEMMNG_SIZE     4096 // 空闲内存信息总数: 使用4096个FREEINFO结构记录空闲内存信息
 /*
-    内存空闲信息
+    内存空闲信息结构体
     使用8字节记录某一段空闲内存地址起点和大小
 */
 struct FREEINFO {
     unsigned int addr, size;
 };
 /*
-    内存空闲信息-汇总
+    内存控制器
 */
 struct MEMMNG {
     int rows;        // 内存空闲信息条数
@@ -212,7 +213,7 @@ struct LAYER {
     struct LAYERCTL *ctl;
 };
 /*
-    图层管理
+    图层控制器
     - vram, xsiez, ysize: vram地址和画面大小, 不用每次去获取BOOTINFO中的启动信息
     - top: 最顶层图层高度
     - layersorted: 图层根据高度升序排序索引
@@ -239,31 +240,33 @@ void layer_free(struct LAYER *layer);
 #define MAX_TIMER       500 // 定时器上限数
 /*
     定时器
+    - next: 下一个即将超时的定时器(链表结构)
     - timeout: 倒计时
+    - flags: 定时器状态标识
     - fifo, data: 倒计时结束后往fifo缓冲区发送数据data
 */
 struct TIMER {
+    struct TIMER *next;
     unsigned int timeout, flags;
-    struct FIFO8 *fifo;
-    unsigned char data;
+    struct FIFO32 *fifo;
+    int data;
 };
 /*
-    定时器管理
+    定时控制器
     - count: 计时(每秒100)
-    - next: 下一个触发时刻(单位同count)
-    - using: 正在使用的定时器数量
-    - timersorted: 根据定时时间升序排列的定时器索引
+    - nexttime: 下一个触发时刻(单位同count)
+    - nextnode: 下一个触发节点
     - timer: 定时器
 */
 struct TIMERCTL {
-    unsigned int count, next, using;
-    struct TIMER *timersorted[MAX_TIMER];
+    unsigned int count, nexttime;
+    struct TIMER *nextnode;
     struct TIMER timer[MAX_TIMER];
 };
 extern struct TIMERCTL timerctl;
 void init_pic(void);
 struct TIMER *timer_alloc(void);
 void timer_free(struct TIMER *timer);
-void timer_init(struct TIMER *timer, struct FIFO8 *fifo, unsigned char data);
+void timer_init(struct TIMER *timer, struct FIFO32 *fifo, int data);
 void timer_settime(struct TIMER *timer, unsigned int timeout);
 void inthandler20(int *esp);

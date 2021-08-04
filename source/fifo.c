@@ -1,3 +1,12 @@
+/*
+    FIFO值      中断类型
+    0~1         光标闪烁定时器
+    3           3秒定时器
+    10          10秒定时器
+    256~511     键盘输入(键盘控制器读入的值再加上256)
+    512~767     鼠标输入(键盘控制器读入的值再加上512)
+*/
+
 #include "bootpack.h"
 
 #define FLAGS_OVERRUN       0x0001
@@ -5,7 +14,7 @@
 /*
     初始化缓冲区
 */
-void fifo8_init(struct FIFO8 *fifo, int size, unsigned char *buf) {
+void fifo32_init(struct FIFO32 *fifo, int size, int *buf) {
     fifo->buf = buf; // 缓冲区地址
     fifo->size = size; // 总大小
     fifo->free = size; // 空余大小
@@ -16,9 +25,9 @@ void fifo8_init(struct FIFO8 *fifo, int size, unsigned char *buf) {
 }
 
 /*
-    缓冲区写入数据(1字节)
+    缓冲区写入数据
 */
-int fifo8_put(struct FIFO8 *fifo, unsigned char data) {
+int fifo32_put(struct FIFO32 *fifo, int data) {
     if (fifo->free == 0) {
         // 缓冲区已满, 无法放入数据, 设置溢出标志, 并返回-1
         fifo->flags |= FLAGS_OVERRUN;
@@ -34,9 +43,9 @@ int fifo8_put(struct FIFO8 *fifo, unsigned char data) {
 }
 
 /*
-    缓冲区读出数据(1字节)
+    缓冲区读出数据
 */
-int fifo8_get(struct FIFO8 *fifo) {
+int fifo32_get(struct FIFO32 *fifo) {
     int data;
     if (fifo->free == fifo->size) {
         return -1; // 缓冲区为空, 没有数据可以读
@@ -53,6 +62,6 @@ int fifo8_get(struct FIFO8 *fifo) {
 /*
     缓冲区当前深度
 */
-int fifo8_status(struct FIFO8 *fifo) {
+int fifo32_status(struct FIFO32 *fifo) {
     return fifo->size - fifo->free;
 }

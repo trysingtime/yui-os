@@ -5,11 +5,12 @@ void make_window8(unsigned char *buf, int xsize, int ysize, char *title);
 void putfonts8_asc_layer(struct LAYER *layer, int x, int y, int color, int backcolor, char *string, int length);
 void HariMain(void) {
     struct BOOTINFO *bootinfo = (struct BOOTINFO *)0x0ff0; // 获取asmhead.nas中存入的bootinfo信息
-    struct FIFO8 timerfifo, timerfifo2, timerfifo3;
-    char s[40], keybuf[32], mousebuf[128], timerbuf[8], timerbuf2[8], timerbuf3[8];
+    struct FIFO32 fifo;
+    int fifobuf[128];
+    char s[40];
     struct TIMER *timer, *timer2, *timer3;
-    int mx, my, i;
-    unsigned int memorytotal, count = 0;
+    int mx, my, i, count = 0;
+    unsigned int memorytotal;
     struct MOUSE_DEC mdec;
     struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR;
     struct LAYERCTL *layerctl;
@@ -23,26 +24,32 @@ void HariMain(void) {
     io_sti(); // 允许中断
 
 // 设置中断缓冲区
-    fifo8_init(&keyfifo, 32, keybuf); // 初始化键盘缓冲区
-    fifo8_init(&mousefifo, 128, mousebuf); // 初始化鼠标缓冲区
-    fifo8_init(&timerfifo, 8, timerbuf); // 初始化倒计时缓冲区
+/*
+    FIFO值      中断类型
+    0~1         光标闪烁定时器
+    3           3秒定时器
+    10          10秒定时器
+    256~511     键盘输入(键盘控制器读入的值再加上256)
+    512~767     鼠标输入(键盘控制器读入的值再加上512)
+*/
+    fifo32_init(&fifo, 128, fifobuf); // 初始化通用(键盘/鼠标/倒计时)缓冲区
 
 // 启用键盘/PIC1/鼠标(IRQ1, IRQ2, IRQ12)
 	io_out8(PIC0_IMR, 0xf9); /* 开放键盘和PIC1中断(11111001) */
 	io_out8(PIC1_IMR, 0xef); /* 开放鼠标中断(11101111) */
-    init_keyboard(); // 初始化键盘控制电路(包含鼠标控制电路)
-    enable_mouse(&mdec); // 启用鼠标本身
+    init_keyboard(&fifo, 256); // 初始化键盘控制电路(包含鼠标控制电路)
+    enable_mouse(&fifo, 512, &mdec); // 启用鼠标本身
 
 // 启用定时器(IRQ0)
     io_out8(PIC0_IMR, 0xf8); /* 开放定时器中断(11111000)*/
     timer = timer_alloc();
-    timer_init(timer, &timerfifo, 10);
+    timer_init(timer, &fifo, 10);
     timer_settime(timer, 1000); //10s
     timer2 = timer_alloc();
-    timer_init(timer2, &timerfifo, 3);
+    timer_init(timer2, &fifo, 3);
     timer_settime(timer2, 300); //3s
     timer3 = timer_alloc();
-    timer_init(timer3, &timerfifo, 1);
+    timer_init(timer3, &fifo, 1);
     timer_settime(timer3, 50); // 0.5s
 
 // 管理内存    
@@ -94,31 +101,26 @@ void HariMain(void) {
 
 // 键盘和鼠标输入处理
     for (;;) {
-        // 显示计数器窗口
-        sprintf(s, "%010d", timerctl.count);
-        putfonts8_asc_layer(layer_window, 40, 28, COL8_000000, COL8_C6C6C6, s, 10);
+        // 用于性能测试, 排除开机前3秒, 从第3秒测试到10秒
+        count++;
 
         io_cli();
-        if (fifo8_status(&keyfifo) + fifo8_status(&mousefifo) + fifo8_status(&timerfifo) == 0) {
+        if (fifo32_status(&fifo) == 0) {
             // 缓冲区为空
             // io_stihlt(); // 区别与"io_sti();io_hlt()", CPU规范中如果STI紧跟HLT, 那么两条指令间不受理中断
             io_sti(); // 高速计数器需要全力运行, 因此取消io_hlt();
         } else {
             // 缓冲区存在信息
-            if (fifo8_status(&keyfifo) != 0 ) {
+            i = fifo32_get(&fifo);
+            io_sti();
+            if (256 <= i && i <= 511) {
                 // 键盘缓冲区处理
-                i = fifo8_get(&keyfifo);
-                io_sti();
-
                 // 显示键盘数据
-                sprintf(s, "%02X", i);
+                sprintf(s, "%02X", i - 256);
                 putfonts8_asc_layer(layer_back, 0, 16, COL8_FFFFFF, COL8_008484, s, 2);
-            } else if (fifo8_status(&mousefifo) != 0) {
+            } else if (512 <= i && i <= 767) {
                 // 鼠标缓冲区处理
-                i = fifo8_get(&mousefifo);
-                io_sti();
-
-                if (mouse_decode(&mdec, i) == 1) {
+                if (mouse_decode(&mdec, i - 512) == 1) {
                     // 鼠标3字节已完整, 显示鼠标数值
                     sprintf(s, "[lcr %4d %4d]", mdec.x, mdec.y);
                     // mdec.btn第0位: 左键, 第1位: 右键, 第2位:中建
@@ -158,32 +160,32 @@ void HariMain(void) {
                     // 移动鼠标
                     layer_slide(layer_mouse, mx, my); // 显示鼠标
                 }
-            } else if (fifo8_status(&timerfifo) != 0) {
-                // 定时器触发处理
-                i = fifo8_get(&timerfifo);
-                io_sti();
-
-                // 根据接收到的数据判断是哪个定时器
-                if (i == 10) {
-                    // 定时器1, 显示字符串
-                    putfonts8_asc_layer(layer_back, 0, 64, COL8_FFFFFF, COL8_008484, "10[sec]", 7); // 显示10[sec]
-                } else if (i == 3) {
-                    // 定时器2, 显示字符串
-                    putfonts8_asc_layer(layer_back, 0, 80, COL8_FFFFFF, COL8_008484, "3[sec]", 6); // 显示3[sec]
-                } else {
-                    // 定时器3, 光标闪烁
-                    // 若为0则显示背景色, 若为1则显示白色, 交替进行, 实现闪烁效果
-                    if (i != 0) {
-                        timer_init(timer3, &timerfifo, 0);
-                        boxfill8(buf_back, bootinfo->screenx, COL8_FFFFFF, 8, 96, 15, 111); // 显示白色
-                    } else {
-                        timer_init(timer3, &timerfifo, 1);
-                        boxfill8(buf_back, bootinfo->screenx, COL8_008484, 8, 96, 15, 111); // 显示背景色
-                    }
-                    timer_settime(timer3, 50); // 再次倒计时0.5s
-                    layer_refresh(layer_back, 8, 96, 16, 112); // 刷新图层
-                }
-            } 
+            } else if (i == 10) {
+                // 10s定时器, 显示字符串
+                putfonts8_asc_layer(layer_back, 0, 64, COL8_FFFFFF, COL8_008484, "10[sec]", 7); // 显示10[sec]
+                // 性能测试, 排除开机前3秒, 从第3秒测试到10秒
+                sprintf(s, "%010d", count);
+                putfonts8_asc_layer(layer_window, 40, 28, COL8_000000, COL8_C6C6C6, s, 10);
+            } else if (i == 3) {
+                // 3s定时器, 显示字符串
+                putfonts8_asc_layer(layer_back, 0, 80, COL8_FFFFFF, COL8_008484, "3[sec]", 6); // 显示3[sec]
+                // 性能测试, 排除开机前3秒, 从第3秒测试到10秒
+                count = 0;
+            } else if (i == 1)  {
+                // 光标闪烁定时器
+                // 若为0则显示背景色, 若为1则显示白色, 交替进行, 实现闪烁效果
+                timer_init(timer3, &fifo, 0);
+                boxfill8(buf_back, bootinfo->screenx, COL8_FFFFFF, 8, 96, 15, 111); // 显示白色
+                timer_settime(timer3, 50); // 再次倒计时0.5s
+                layer_refresh(layer_back, 8, 96, 16, 112); // 刷新图层
+            } else if (i == 0) {
+                // 光标闪烁定时器
+                // 若为0则显示背景色, 若为1则显示白色, 交替进行, 实现闪烁效果
+                timer_init(timer3, &fifo, 1);
+                boxfill8(buf_back, bootinfo->screenx, COL8_008484, 8, 96, 15, 111); // 显示背景色
+                timer_settime(timer3, 50); // 再次倒计时0.5s
+                layer_refresh(layer_back, 8, 96, 16, 112); // 刷新图层
+            }
         }
     }
 }

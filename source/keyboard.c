@@ -8,7 +8,7 @@ void inthandler21(int *esp) {
 	int data;
 	io_out8(PIC0_OCW2, 0x61); // 通知PIC0(IRQ01~07)/IRQ-01(键盘中断)已接收到中断, 继续监听下一个中断
 	data = io_in8(PORT_KEYDAT); // 从端口0x0060(键盘)读取一个字节
-	fifo32_put(&keyfifo, keyoffsetdata + data); // 将data(实际只有1字节)写入缓冲区
+	fifo32_put(keyfifo, keyoffsetdata + data); // 将data(实际只有1字节)写入缓冲区
 	return;
 }
 

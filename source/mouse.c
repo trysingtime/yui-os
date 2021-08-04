@@ -9,7 +9,7 @@ void inthandler2c(int *esp) {
 	io_out8(PIC1_OCW2, 0x64); // 通知PIC1(IRQ08~15)/IRQ-12(鼠标中断)已接收到中断, 继续监听下一个中断
 	io_out8(PIC0_OCW2, 0x62); // 通知PIC0(IRQ01~07)/IRQ-02(从PIC中断)已接收到中断, 继续监听下一个中断
 	data = io_in8(PORT_KEYDAT); // 从端口0x0060(鼠标)读取一个字节
-	fifo32_put(&mousefifo, mouseoffsetdata + data); // 将data(实际只有1字节)写入缓冲区
+	fifo32_put(mousefifo, mouseoffsetdata + data); // 将data(实际只有1字节)写入缓冲区
 	return;
 }
 

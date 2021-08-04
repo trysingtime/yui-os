@@ -139,7 +139,6 @@ void inthandler20(int *esp) {
     }
 
     // 已到下一个指定时刻, 根据链表遍历定时器, 判断是哪些定时器(可能同时触发多个)
-    int i;
     struct TIMER *timer;
     timer = timerctl.nextnode;
     for (;;) {

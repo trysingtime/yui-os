@@ -16,18 +16,70 @@ VRAM	EQU		0x0ff8			; 图像缓冲区开始地址
         ORG     0xc200
 
 ; 当前CPU为16位模式, 后续要切换到32位模式, 但BIOS是16位机器语言写的, 切换后无法再调用BIOS功能, 因此切换前把需调用BIOS功能的提前完成
+
 ; 通过BIOS设置显卡模式(video mode)
-        MOV     AL,0x13             ; 0x03:16色字符模式,80x25;0x12:VGA图形模式, 640X480X4位彩色; 0x13:VGA图形模式,320x200x8位彩色; 0x6a: 扩展VGA图形模式, 800x600x4位彩色
+; 旧画面模式: AH=0; AL=画面模式号码, 例如(MOV AL,0x13; MOV AH,0x00)
+; 旧画面模式号码: 0x03: 80*25*16bit; 0x12:VGA图形模式, 640*480*4bit; 0x13:VGA图形模式, 320*200*8bit; 0x6a: 扩展VGA图形模式, 800*600*4bit
+; 新画面模式(VBE(VESA(Video Electronics Standards Association) BIOS extension)): AX=0x4f02; BX=画面模式号码
+; 新画面模式号码: 0x100: 640*400*8bit; 0x101: 640*480*8bit; 0x103: 800*600*8bit; 0x105: 1024*768*8bit; 0x107(QEMU不支持): 1280*1024*8bit
+
+[INSTRSET "i486p"]				; 说明使用486指令(32位)
+VBEMODE EQU		0x105
+; 确认VBE是否支持(不支持VBE, 只能使用旧画面模式)
+		MOV		AX,0x9000
+		MOV		ES,AX
+		MOV		DI,0				; 将VBE版本信息写入ES:DI开始的512字节中, 此处指定写入地址ES=0x9000, DI=0
+		MOV		AX,0x4f00
+		INT		0x10
+		CMP		AX,0x004f			; AX原为0x4f00, 若显卡支持VBE, (INT 0x10)后AX会变为0x004f
+		JNE		screen320
+; 检查VBE版本(VBE版本低于2.0, 只能使用旧画面模式)
+		MOV		AX,[ES:DI+4]		; 通过读取VBE版本信息来判断VBE版本
+		CMP		AX,0x0200
+		JB		screen320
+; 检查VBE新画面模式是否支持
+		MOV		CX,VBEMODE
+		MOV		AX,0x4f01
+		INT		0x10				; 此处再次INT 0x10, 会使用画面模式信息(256字节)覆盖掉上面写入ES:DI中的VBE版本信息(512字节)
+		CMP		AX,0x004f			; AX原为0x4f01, 若显卡支持该新画面模式VBEMODE, (INT 0x10)后AX会变为0x004f
+		JNE		screen320
+; VBE新画面模式信息确认
+; 画面模式信息(256字节): 
+; WORD [ES:DI+0x00]:模式属性; WORD [ES:DI+0x12]:X分辨率; WORD [ES:DI+0x14]:Y分辨率;
+; BYTE [ES:DI+0x19]:颜色数;BYTE [ES:DI+0x1b]:颜色指定方法(4:调色板模式); DWORD [ES:DI+0x28]:VRAM地址;
+		CMP		BYTE [ES:DI+0x19],8	; 检查颜色数是否为8
+		JNE		screen320
+		CMP		BYTE [ES:DI+0x1b],4 ; 检查颜色指定方法是否为4(调色板模式)
+		JNE		screen320
+		MOV		AX,[ES:DI+0x00]
+		AND		AX,0x0080			; 检查模式属性bit7是否为0
+		JZ		screen320
+; 满足以上所有条件, 使用新画面模式
+		MOV		BX,VBEMODE+0x4000	; AX=0x4f02; BX=画面模式号码
+		MOV		AX,0x4f02
+		INT		0x10
+		; 保存BOOT_INFO
+		MOV		BYTE [VMODE],8		; 几位色
+		MOV		AX,[ES:DI+0x12]		; 分辨率X
+		MOV		[SCREENX],AX
+		MOV		AX,[ES:DI+0x14]		; 分辨率X
+		MOV		[SCREENY],AX
+		MOV		EAX,[ES:DI+0x28]	; 图像缓冲区开始地址(不同显卡模式对应不同VRAM地址, 0x13对应0x000a0000~0x000affff, 0x4101/0x4105对应0xe0000000)
+		MOV		[VRAM],EAX
+		JMP		keystatus
+; 不满足条件, 只能使用旧画面模式
+screen320:
+	    MOV     AL,0x13				; AH=0; AL=画面模式号码(80*25*16bit)
         MOV     AH,0x00
         INT     0x10
-
-; 保存BOOT_INFO
-        MOV     BYTE [VMODE],8      ; 几位色
-        MOV     WORD [SCREENX],320    ; 分辨率X
-        MOV     WORD [SCREENY],200    ; 分辨率Y
-        MOV     DWORD [VRAM],0x000a0000     ; 图像缓冲区开始地址(不同显卡模式对应不同VRAM地址, 0x13对应0xa0000~0xaffff)
+		; 保存BOOT_INFO
+        MOV     BYTE [VMODE],8		; 几位色
+        MOV     WORD [SCREENX],320	; 分辨率X
+        MOV     WORD [SCREENY],200	; 分辨率Y
+        MOV     DWORD [VRAM],0x000a0000     ; 图像缓冲区开始地址(不同显卡模式对应不同VRAM地址, 0x13对应0x000a0000~0x000affff, 0x4101/0x4105对应0xe0000000)
 
 ; 通过BIOS取得键盘各种LED指示灯的状态
+keystatus:
         MOV     AH,0x02
         INT     0x16
         MOV     [LEDS],AL
@@ -53,7 +105,6 @@ VRAM	EQU		0x0ff8			; 图像缓冲区开始地址
 ; 区别实模式(real address mode), 计算内存地址时, 实模式使用段寄存器的值直接指定地址值的一部分(段寄存器*16+指定地址)
 ; 保护模式则通过GDT使用段寄存器的值指定并非实际存在的地址号码(段号起始地址+指定地址), 小结: 有无使用GDT
 ; CR0寄存器(32位),bit30+bit29置1禁止缓存,bit31置为0禁用分页,bit0置为1切换到保护模式
-[INSTRSET "i486p"]				; 说明使用486指令(32位)
 		LGDT	[GDTR0]			; 设置临时GDT
 		MOV		EAX,CR0			; control register 0, 非常重要的寄存器
 		AND		EAX,0x7fffffff	; bit31置为0（禁用分页）

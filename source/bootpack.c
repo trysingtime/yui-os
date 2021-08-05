@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 void make_window8(unsigned char *buf, int xsize, int ysize, char *title);
+void make_textbox8(struct LAYER *layer, int x0, int y0, int sx, int sy, int c);
 void putfonts8_asc_layer(struct LAYER *layer, int x, int y, int color, int backcolor, char *string, int length);
 void HariMain(void) {
     struct BOOTINFO *bootinfo = (struct BOOTINFO *)0x0ff0; // 获取asmhead.nas中存入的bootinfo信息
@@ -9,13 +10,22 @@ void HariMain(void) {
     int fifobuf[128];
     char s[40];
     struct TIMER *timer, *timer2, *timer3;
-    int mx, my, i, count = 0;
+    int mx, my, i, cursor_x, cursor_c;
     unsigned int memorytotal;
     struct MOUSE_DEC mdec;
     struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR;
     struct LAYERCTL *layerctl;
     struct LAYER *layer_back, *layer_mouse, *layer_window;
     unsigned char *buf_back, *buf_window, buf_mouse[256];
+    /* 键盘按键映射表 */
+    static char keytable[0x54] = {
+		0,   0,   '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 0,   0,
+		'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']', 0,   0,   'A', 'S',
+		'D', 'F', 'G', 'H', 'J', 'K', 'L', ';', '\'', '`',   0,   '\\', 'Z', 'X', 'C', 'V',
+		'B', 'N', 'M', ',', '.', '/', 0,   '*', 0,   ' ', 0,   0,   0,   0,   0,   0,
+		0,   0,   0,   0,   0,   0,   0,   '7', '8', '9', '-', '4', '5', '6', '+', '1',
+		'2', '3', '0', '.'
+	};
 
 // 设置系统参数
     init_gdtidt(); // 初始化GDT/IDT
@@ -77,7 +87,11 @@ void HariMain(void) {
     // 绘制背景
     init_screen8(buf_back, bootinfo -> screenx, bootinfo -> screeny);
     // 绘制窗口
-    make_window8(buf_window, 160, 52, "counter");
+    make_window8(buf_window, 160, 52, "window");
+    // 绘制文本框
+    make_textbox8(layer_window, 8, 28, 144, 16, COL8_FFFFFF);
+    cursor_x = 8; // 光标位置
+    cursor_c = COL8_FFFFFF; // 光标颜色
     // 绘制鼠标指针(图层颜色设置为未使用的99, 鼠标背景颜色也设置为99, 两者相同则透明)
     init_mouse_cursor8(buf_mouse, 99); 
 
@@ -101,14 +115,11 @@ void HariMain(void) {
 
 // 键盘和鼠标输入处理
     for (;;) {
-        // 用于性能测试, 排除开机前3秒, 从第3秒测试到10秒
-        count++;
-
         io_cli();
         if (fifo32_status(&fifo) == 0) {
             // 缓冲区为空
-            // io_stihlt(); // 区别与"io_sti();io_hlt()", CPU规范中如果STI紧跟HLT, 那么两条指令间不受理中断
-            io_sti(); // 高速计数器需要全力运行, 因此取消io_hlt();
+            io_stihlt(); // 区别与"io_sti();io_hlt()", CPU规范中如果STI紧跟HLT, 那么两条指令间不受理中断
+            // io_sti(); // 性能测试时使用, 高速计数器需要全力运行, 因此取消io_hlt();
         } else {
             // 缓冲区存在信息
             i = fifo32_get(&fifo);
@@ -118,6 +129,24 @@ void HariMain(void) {
                 // 显示键盘数据
                 sprintf(s, "%02X", i - 256);
                 putfonts8_asc_layer(layer_back, 0, 16, COL8_FFFFFF, COL8_008484, s, 2);
+                if (i < 256 + 0x54) {
+                    // 键盘数据含于键盘按键表中
+                    if (keytable[i - 256] != 0 && cursor_x < 144) {
+                        /* 普通字符 */
+                        s[0] = keytable[i - 256];
+                        s[1] = 0;
+                        putfonts8_asc_layer(layer_window, cursor_x, 28, COL8_000000, COL8_FFFFFF, s, 1); // 显示键盘按键
+                        cursor_x += 8; // 光标前移
+                    }
+                    if (i == 256 + 0x0e && cursor_x > 8) {
+                        /* 退格键 */
+                        putfonts8_asc_layer(layer_window, cursor_x, 28, COL8_000000, COL8_FFFFFF, " ", 1); // 擦除显示的键盘按键
+                        cursor_x -= 8; // 光标后移
+                    }
+                    // 重绘光标
+                    boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示白色
+                    layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
+                }
             } else if (512 <= i && i <= 767) {
                 // 鼠标缓冲区处理
                 if (mouse_decode(&mdec, i - 512) == 1) {
@@ -138,8 +167,8 @@ void HariMain(void) {
 
                     // 显示鼠标指针移动
                     // 计算鼠标x, y轴的数值, 基于屏幕中心点
-                    mx += mdec.x / 10;
-                    my += mdec.y / 10;
+                    mx += mdec.x/3;
+                    my += mdec.y/3;
                     // 防止鼠标超出屏幕
                     if (mx < 0) {
                         mx = 0;
@@ -159,32 +188,34 @@ void HariMain(void) {
                     putfonts8_asc_layer(layer_back, 0, 0, COL8_FFFFFF, COL8_008484, s, 10);
                     // 移动鼠标
                     layer_slide(layer_mouse, mx, my); // 显示鼠标
+                    // 鼠标左键
+                    if ((mdec.btn & 0x01) != 0) {
+                        // 移动窗口
+                        layer_slide(layer_window, mx - 80, my - 8);
+                    }
                 }
             } else if (i == 10) {
                 // 10s定时器, 显示字符串
                 putfonts8_asc_layer(layer_back, 0, 64, COL8_FFFFFF, COL8_008484, "10[sec]", 7); // 显示10[sec]
-                // 性能测试, 排除开机前3秒, 从第3秒测试到10秒
-                sprintf(s, "%010d", count);
-                putfonts8_asc_layer(layer_window, 40, 28, COL8_000000, COL8_C6C6C6, s, 10);
             } else if (i == 3) {
                 // 3s定时器, 显示字符串
                 putfonts8_asc_layer(layer_back, 0, 80, COL8_FFFFFF, COL8_008484, "3[sec]", 6); // 显示3[sec]
-                // 性能测试, 排除开机前3秒, 从第3秒测试到10秒
-                count = 0;
             } else if (i == 1)  {
                 // 光标闪烁定时器
-                // 若为0则显示背景色, 若为1则显示白色, 交替进行, 实现闪烁效果
+                // 若为0则显示黑色, 若为1则显示白色, 交替进行, 实现闪烁效果
                 timer_init(timer3, &fifo, 0);
-                boxfill8(buf_back, bootinfo->screenx, COL8_FFFFFF, 8, 96, 15, 111); // 显示白色
                 timer_settime(timer3, 50); // 再次倒计时0.5s
-                layer_refresh(layer_back, 8, 96, 16, 112); // 刷新图层
+                cursor_c = COL8_000000;
+                boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示白色
+                layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
             } else if (i == 0) {
                 // 光标闪烁定时器
-                // 若为0则显示背景色, 若为1则显示白色, 交替进行, 实现闪烁效果
+                // 若为0则显示黑色, 若为1则显示白色, 交替进行, 实现闪烁效果
                 timer_init(timer3, &fifo, 1);
-                boxfill8(buf_back, bootinfo->screenx, COL8_008484, 8, 96, 15, 111); // 显示背景色
                 timer_settime(timer3, 50); // 再次倒计时0.5s
-                layer_refresh(layer_back, 8, 96, 16, 112); // 刷新图层
+                cursor_c = COL8_FFFFFF;
+                boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示黑色
+                layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
             }
         }
     }
@@ -199,15 +230,15 @@ void HariMain(void) {
 void make_window8(unsigned char *buf, int xsize, int ysize, char *title)
 {
 	boxfill8(buf, xsize, COL8_C6C6C6, 0,         0,         xsize - 1, 0        ); // 上边界-亮灰
-	boxfill8(buf, xsize, COL8_FFFFFF, 1,         1,         xsize - 2, 1        ); // 上边界阴影-白
+	boxfill8(buf, xsize, COL8_FFFFFF, 1,         1,         xsize - 2, 1        ); // 上边界-内阴影-白
 	boxfill8(buf, xsize, COL8_C6C6C6, 0,         0,         0,         ysize - 1); // 左边界-亮灰
-	boxfill8(buf, xsize, COL8_FFFFFF, 1,         1,         1,         ysize - 2); // 左边界阴影-白
+	boxfill8(buf, xsize, COL8_FFFFFF, 1,         1,         1,         ysize - 2); // 左边界-内阴影-白
 	boxfill8(buf, xsize, COL8_848484, xsize - 2, 1,         xsize - 2, ysize - 2); // 右边界-暗灰
-	boxfill8(buf, xsize, COL8_000000, xsize - 1, 0,         xsize - 1, ysize - 1); // 右边界阴影-黑
+	boxfill8(buf, xsize, COL8_000000, xsize - 1, 0,         xsize - 1, ysize - 1); // 右边界-阴影-黑
 	boxfill8(buf, xsize, COL8_C6C6C6, 2,         2,         xsize - 3, ysize - 3); // 窗体-亮灰
 	boxfill8(buf, xsize, COL8_000084, 3,         3,         xsize - 4, 20       ); // 标题栏-暗青
 	boxfill8(buf, xsize, COL8_848484, 1,         ysize - 2, xsize - 2, ysize - 2); // 下边界-暗灰
-	boxfill8(buf, xsize, COL8_000000, 0,         ysize - 1, xsize - 1, ysize - 1); // 下边界阴影-黑
+	boxfill8(buf, xsize, COL8_000000, 0,         ysize - 1, xsize - 1, ysize - 1); // 下边界-阴影-黑
 	putfonts8_asc(buf, xsize, 24, 4, COL8_FFFFFF, title); // 标题
 
     // 右上角按钮X, 坐标(5, xsize - 21), 大小(14 * 16)
@@ -245,6 +276,27 @@ void make_window8(unsigned char *buf, int xsize, int ysize, char *title)
 		}
 	}
 	return;
+}
+
+/*
+    绘制文本框
+    - layer: 指定图层
+    - x0, y0: 文本框在图层中的坐标(左边和上边溢出3个像素, 右边和下边溢出2个像素)
+    - xsize, ysize: 文本框长度和宽度
+    - color: 文本框背景色
+*/
+void make_textbox8(struct LAYER *layer, int x0, int y0, int xsize, int ysize, int color) {
+    int x1 = x0 + xsize, y1 = y0 + ysize;
+    boxfill8(layer->buf, layer->bxsize, COL8_848484, x0 - 2, y0 - 3, x1 + 1, y0 - 3); // 上边界-暗灰
+    boxfill8(layer->buf, layer->bxsize, COL8_000000, x0 - 1, y0 - 2, x1 + 0, y0 - 2); // 上边界-内阴影-黑
+    boxfill8(layer->buf, layer->bxsize, COL8_848484, x0 - 3, y0 - 3, x0 - 3, y1 + 1); // 左边界-亮灰
+    boxfill8(layer->buf, layer->bxsize, COL8_000000, x0 - 2, y0 - 2, x0 - 2, y1 + 0); // 左边界-内阴影-黑
+    boxfill8(layer->buf, layer->bxsize, COL8_FFFFFF, x0 - 3, y1 + 2, x1 + 1, y1 + 2); // 下边界-白
+    boxfill8(layer->buf, layer->bxsize, COL8_C6C6C6, x0 - 2, y1 + 1, x1 + 0, y1 + 1); // 下边界-内阴影-亮灰
+    boxfill8(layer->buf, layer->bxsize, COL8_FFFFFF, x1 + 2, y0 - 3, x1 + 2, y1 + 2); // 右边界-白
+    boxfill8(layer->buf, layer->bxsize, COL8_C6C6C6, x1 + 1, y0 - 2, x1 + 1, y1 + 1); // 右边界-内阴影-亮灰
+    boxfill8(layer->buf, layer->bxsize, color      , x0 - 1, y0 - 1, x1 + 0, y1 + 0); // 文本输入框
+    return;
 }
 
 /*

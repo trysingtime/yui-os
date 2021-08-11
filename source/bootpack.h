@@ -320,11 +320,13 @@ struct TSS32 {
     - flags: 任务状态, 0: 未激活,1: 正在使用,2: 正在运行
     - level: 当前任务属于哪个层级(level)
     - priority: 任务优先级(任务切换间隔, 执行多少秒后切换到下一个任务, 单位: priority/100s)
+    - fifo: 任务绑定的中断缓冲区
     - tss: TSS结构
 */
 struct TASK {
     int selector, flags;
     int level, priority;
+    struct FIFO32 fifo;
     struct TSS32 tss;
 };
 /*
@@ -353,6 +355,7 @@ struct TASKCTL {
     struct TASK tasks[MAX_TASKS];
 };
 extern struct TIMER *task_timer;
+struct TASK *task_current(void);
 struct TASK *taskctl_init(struct MEMMNG *memmng);
 struct TASK *task_alloc(void);
 void task_run(struct TASK *task, int level, int priority);

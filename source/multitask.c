@@ -77,7 +77,7 @@ void task_level_update(void) {
     哨兵任务
     - 永久HLT, 防止所有任务都休眠, 至少有一个任务在执行
 */
-void task_idle(void) {
+void task_idle_implement(void) {
     for (;;) {
         io_hlt();
     }
@@ -122,7 +122,7 @@ struct TASK *taskctl_init(struct MEMMNG *memmng) {
     struct TASK *idle = task_alloc();
     // 初始化哨兵任务寄存器
     idle->tss.esp = memory_alloc_4k(memmng, 64 * 1024) + 64 * 1024; // 任务B使用的栈(64KB), esp存入栈顶(栈末尾高位地址)的地址
-    idle->tss.eip = (int) &task_idle;
+    idle->tss.eip = (int) &task_idle_implement;
     idle->tss.es = 1 * 8;
     idle->tss.cs = 2 * 8; // 使用段号2
     idle->tss.ss = 1 * 8;

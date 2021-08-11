@@ -13,7 +13,10 @@ SCREENX	EQU		0x0ff4			; 画面分辨率X
 SCREENY	EQU		0x0ff6			; 画面分辨率Y
 VRAM	EQU		0x0ff8			; 图像缓冲区开始地址
 
-        ORG     0xc200
+; haribote.sys制作成镜像后保存在磁盘的0x004200位置, 磁盘的前512字节(0x0200)被自动读取到内存的0x7c00~0x7dff, 
+; 后续内容被上面手动读取0x8200, 因此haribote.sys读取到内存后位于0x8200+(0x4200-0x0200)=0xc200
+; 此处告诉编译器这个事实, 让其后续可以使用(0xc200+相对位置)来操作内存
+        ORG     0xc200; 
 
 ; 当前CPU为16位模式, 后续要切换到32位模式, 但BIOS是16位机器语言写的, 切换后无法再调用BIOS功能, 因此切换前把需调用BIOS功能的提前完成
 
@@ -152,7 +155,7 @@ pipelineflush:
 		CALL	memcpy			; 将bootpack.hrb第0x10c8字节开始的0x11a8字节复制到0x00310000地址
 skip:
 		MOV		ESP,[EBX+12]	; 堆栈的初始化(0x00300000~0x003fffff用于堆栈)
-		JMP		DWORD 2*8:0x0000001b	; 跳转到段号2(0x280000(bootpack.hrb))的0x1b地址, 即0x28001b(bootpack.hrb的0x1b地址), 也即启动bootpack
+		JMP		DWORD 2*8:0x0000001b	; (far-JMP, 同时改变EIP和CS, CS段寄存器低3位无效, 需要*8)跳转到段号2(0x280000(bootpack.hrb))的0x1b地址, 即0x28001b(bootpack.hrb的0x1b地址), 也即启动bootpack
 
 ; 以下为功能函数, 用于被上述方法调用
 

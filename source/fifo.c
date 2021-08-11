@@ -13,14 +13,19 @@
 
 /*
     初始化缓冲区
+    - fifo: 缓冲区结构体(地址)
+    - size: 缓冲区总大小
+    - buf: 缓冲区地址
+    - task: 满足条件后自动唤醒的task, task=0: 禁止自动唤醒
 */
-void fifo32_init(struct FIFO32 *fifo, int size, int *buf) {
+void fifo32_init(struct FIFO32 *fifo, int size, int *buf, struct TASK *task) {
     fifo->buf = buf; // 缓冲区地址
     fifo->size = size; // 总大小
     fifo->free = size; // 空余大小
     fifo->flags = 0; // 溢出标识
     fifo->p = 0; // 写入位置
     fifo->q = 0; // 读出位置
+    fifo->task = task;
     return;
 }
 
@@ -39,6 +44,10 @@ int fifo32_put(struct FIFO32 *fifo, int data) {
         fifo->p = 0;
     }
     fifo->free--;
+    /* 如果FIFO设置了task, 且task当前不是正在运行, 则唤醒task */
+    if (fifo->task != 0 && fifo->task->flags != 2) {
+        task_run(fifo->task, -1, 0); // level为-1, 不改变task层级; priority为0, 不改变task优先级
+    }
     return 0;
 }
 

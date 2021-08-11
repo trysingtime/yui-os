@@ -140,6 +140,7 @@ void inthandler20(int *esp) {
 
     // 已到下一个指定时刻, 根据链表遍历定时器, 判断是哪些定时器(可能同时触发多个)
     struct TIMER *timer;
+    char ts = 0;
     timer = timerctl.nextnode;
     for (;;) {
         if (timer->timeout > timerctl.count) {
@@ -148,12 +149,22 @@ void inthandler20(int *esp) {
         }
         // 该定时器时刻已到, 往fifo缓冲区发送数据
         timer->flags = TIMER_FLAGS_ALLOC;
-        fifo32_put(timer->fifo, timer->data);
+        if (timer == task_timer) {
+            // 特殊情况, 多任务定时器, 不往FIFO发送数据, 而是将ts标志置1, 后续根据该标志切换任务
+            ts = 1;
+        } else {
+            fifo32_put(timer->fifo, timer->data);  
+        }
         timer = timer->next;
     }
 
     // 有i个定时器同时被触发了, 更新定时控制器信息
     timerctl.nextnode = timer;
     timerctl.nexttime = timerctl.nextnode->timeout;
+
+    // 如果是多任务定时器, 则依次切换到下一任务, 切换任务放到中断处理最后, 不然中断处理有可能没完成
+    if (ts != 0) {
+        task_switch();
+    }
     return;
 }

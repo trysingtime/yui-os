@@ -1,22 +1,25 @@
 #include "bootpack.h"
 #include <stdio.h>
 
-void make_window8(unsigned char *buf, int xsize, int ysize, char *title);
+void make_window8(unsigned char *buf, int xsize, int ysize, char *title, char active);
 void make_textbox8(struct LAYER *layer, int x0, int y0, int sx, int sy, int c);
 void putfonts8_asc_layer(struct LAYER *layer, int x, int y, int color, int backcolor, char *string, int length);
+void putfonts8_asc_layer(struct LAYER *layer, int x, int y, int color, int backcolor, char *string, int length);
+void task_b_main(struct LAYER *layer_back);
+
 void HariMain(void) {
     struct BOOTINFO *bootinfo = (struct BOOTINFO *)0x0ff0; // 获取asmhead.nas中存入的bootinfo信息
     struct FIFO32 fifo;
     int fifobuf[128];
     char s[40];
-    struct TIMER *timer, *timer2, *timer3;
+    struct TIMER *timer;
     int mx, my, i, cursor_x, cursor_c;
     unsigned int memorytotal;
     struct MOUSE_DEC mdec;
     struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR;
     struct LAYERCTL *layerctl;
-    struct LAYER *layer_back, *layer_mouse, *layer_window;
-    unsigned char *buf_back, *buf_window, buf_mouse[256];
+    struct LAYER *layer_back, *layer_mouse, *layer_window, *layer_window_b[3];
+    unsigned char *buf_back, buf_mouse[256], *buf_window, *buf_window_b;
     /* 键盘按键映射表 */
     static char keytable[0x54] = {
 		0,   0,   '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 0,   0,
@@ -26,6 +29,7 @@ void HariMain(void) {
 		0,   0,   0,   0,   0,   0,   0,   '7', '8', '9', '-', '4', '5', '6', '+', '1',
 		'2', '3', '0', '.'
 	};
+    struct TASK *task_a, *task_b[3];
 
 // 设置系统参数
     init_gdtidt(); // 初始化GDT/IDT
@@ -42,7 +46,7 @@ void HariMain(void) {
     256~511     键盘输入(键盘控制器读入的值再加上256)
     512~767     鼠标输入(键盘控制器读入的值再加上512)
 */
-    fifo32_init(&fifo, 128, fifobuf); // 初始化通用(键盘/鼠标/倒计时)缓冲区
+    fifo32_init(&fifo, 128, fifobuf, 0); // 初始化通用(键盘/鼠标/倒计时)缓冲区
 
 // 启用键盘/PIC1/鼠标(IRQ1, IRQ2, IRQ12)
 	io_out8(PIC0_IMR, 0xf9); /* 开放键盘和PIC1中断(11111001) */
@@ -53,14 +57,8 @@ void HariMain(void) {
 // 启用定时器(IRQ0)
     io_out8(PIC0_IMR, 0xf8); /* 开放定时器中断(11111000)*/
     timer = timer_alloc();
-    timer_init(timer, &fifo, 10);
-    timer_settime(timer, 1000); //10s
-    timer2 = timer_alloc();
-    timer_init(timer2, &fifo, 3);
-    timer_settime(timer2, 300); //3s
-    timer3 = timer_alloc();
-    timer_init(timer3, &fifo, 1);
-    timer_settime(timer3, 50); // 0.5s
+    timer_init(timer, &fifo, 1);
+    timer_settime(timer, 50); // 0.5s
 
 // 管理内存    
     memorytotal = memtest(0x00400000, 0xbfffffff); // 获取总内存大小
@@ -68,42 +66,19 @@ void HariMain(void) {
     memory_free(mng, 0x00001000, 0x0009e000); // 0x00001000~0x0009e000暂未使用, 释放掉
     memory_free(mng, 0x00400000, memorytotal - 0x00400000); // 0x00400000以后的内存也暂未使用, 释放掉
 
-// 管理图层
-    layerctl = layerctl_init(mng, bootinfo->vram, bootinfo->screenx, bootinfo->screeny); // 初始化图层管理
-    layer_back = layer_alloc(layerctl); // 新建背景图层
-    layer_window = layer_alloc(layerctl); // 新建窗口图层
-    layer_mouse = layer_alloc(layerctl); // 新建鼠标图层
-    buf_back = (unsigned char *) memory_alloc_4k(mng, bootinfo->screenx * bootinfo->screeny); // 背景图层内容地址
-    buf_window = (unsigned char *) memory_alloc_4k(mng, 160 * 52);
-    layer_init(layer_back, buf_back, bootinfo->screenx, bootinfo->screeny, -1); // 初始化背景图层
-    layer_init(layer_mouse, buf_mouse, 16, 16, 99); // 初始化鼠标图层(图层颜色设置为未使用的99, 鼠标背景颜色也设置为99, 两者相同则透明)
-    layer_init(layer_window, buf_window, 160, 52, -1); // 初始化窗口图层
-
 // 显示
     init_palette(); // 设定调色盘
+
+// 管理图层
+    layerctl = layerctl_init(mng, bootinfo->vram, bootinfo->screenx, bootinfo->screeny); // 初始化图层管理
+    // 背景图层
+    layer_back = layer_alloc(layerctl); // 新建背景图层
+    buf_back = (unsigned char *) memory_alloc_4k(mng, bootinfo->screenx * bootinfo->screeny); // 背景图层内容地址
+    layer_init(layer_back, buf_back, bootinfo->screenx, bootinfo->screeny, -1); // 初始化背景图层
+    init_screen8(buf_back, bootinfo -> screenx, bootinfo -> screeny); // 绘制背景
+    // 绘制鼠标坐标(背景图层)
     mx = (bootinfo -> screenx - 16) / 2; // 计算屏幕中间点(减去指针本身)
     my = (bootinfo -> screeny - 28 - 16) / 2; // 计算屏幕中间点(减去任务栏和指针本身)
-
-    // 绘制背景
-    init_screen8(buf_back, bootinfo -> screenx, bootinfo -> screeny);
-    // 绘制窗口
-    make_window8(buf_window, 160, 52, "window");
-    // 绘制文本框
-    make_textbox8(layer_window, 8, 28, 144, 16, COL8_FFFFFF);
-    cursor_x = 8; // 光标位置
-    cursor_c = COL8_FFFFFF; // 光标颜色
-    // 绘制鼠标指针(图层颜色设置为未使用的99, 鼠标背景颜色也设置为99, 两者相同则透明)
-    init_mouse_cursor8(buf_mouse, 99); 
-
-    // 显示图层
-    layer_slide(layer_back, 0, 0); // 移动背景图层
-    layer_slide(layer_window, 80, 72); // 移动窗口图层
-    layer_slide(layer_mouse, mx, my); // 移动鼠标图层到屏幕中点
-    layer_updown(layer_back, 0); // 切换背景图层高度
-    layer_updown(layer_window, 1); // 切换窗口图层高度
-    layer_updown(layer_mouse, 2); // 切换鼠标图层高度
-
-    // 绘制鼠标坐标(背景图层)
     sprintf(s, "(%3d, %3d)", mx, my);
     putfonts8_asc_layer(layer_back, 0, 0, COL8_FFFFFF, COL8_008484, s, 10);
     // 绘制内存信息(背景图层)
@@ -113,13 +88,77 @@ void HariMain(void) {
     putfonts8_asc_layer(layer_back, 100, 70, COL8_FFFFFF, COL8_008484, "Haribote OS.", 40);
     putfonts8_asc_layer(layer_back, 101, 71, COL8_000000, COL8_008484, "Haribote OS.", 40); // 文字阴影效果
 
+    // 鼠标图层
+    layer_mouse = layer_alloc(layerctl); // 新建鼠标图层
+    layer_init(layer_mouse, buf_mouse, 16, 16, 99); // 初始化鼠标图层(图层颜色设置为未使用的99, 鼠标背景颜色也设置为99, 两者相同则透明)
+    init_mouse_cursor8(buf_mouse, 99); // 绘制鼠标指针(图层颜色设置为未使用的99, 鼠标背景颜色也设置为99, 两者相同则透明)
+
+    // 窗口图层
+    layer_window = layer_alloc(layerctl); // 新建窗口图层
+    buf_window = (unsigned char *) memory_alloc_4k(mng, 160 * 52);
+    layer_init(layer_window, buf_window, 144, 52, -1); // 初始化窗口图层
+    make_window8(buf_window, 144, 52, "task_a", 1); // 绘制窗口
+    // 绘制窗口图层-文本框
+    make_textbox8(layer_window, 8, 28, 144, 16, COL8_FFFFFF);
+    cursor_x = 8; // 光标位置
+    cursor_c = COL8_FFFFFF; // 光标颜色
+
+// 多任务
+    // 任务控制器初始化, 并返回当前任务
+    task_a = taskctl_init(mng);
+    task_run(task_a, 1, 0); // 更新task_a的层级信息为1
+    fifo.task = task_a; // 若task_a休眠时有中断, 则唤醒task_a
+
+    // 多窗口和多任务
+    for (i = 0; i < 3; i++) {
+        // 窗口图层
+        layer_window_b[i] = layer_alloc(layerctl); // 新建窗口图层
+        buf_window_b = (unsigned char *) memory_alloc_4k(mng, 144 * 52);
+        layer_init(layer_window_b[i], buf_window_b, 144, 52, -1); // 初始化窗口图层
+        sprintf(s, "task_b%d", i);
+        make_window8(buf_window_b, 144, 52, s, 0); // 绘制窗口
+
+        // 任务B初始化
+        task_b[i] = task_alloc();
+        // 任务B, TSS寄存器初始化
+        task_b[i]->tss.esp = memory_alloc_4k(mng, 64 * 1024) + 64 * 1024; // 任务B使用的栈(64KB), esp存入栈顶(栈末尾高位地址)的地址
+        task_b[i]->tss.eip = (int) &task_b_main;
+        task_b[i]->tss.es = 1 * 8;
+        task_b[i]->tss.cs = 2 * 8; // 使用段号2
+        task_b[i]->tss.ss = 1 * 8;
+        task_b[i]->tss.ds = 1 * 8;
+        task_b[i]->tss.fs = 1 * 8;
+        task_b[i]->tss.gs = 1 * 8;
+        // 往任务B传值
+        task_b[i]->tss.esp -= 4; // 将要放入4字节参数, 压栈4字节
+        *((int *) task_b[i]->tss.esp) = (int) layer_window_b[i]; // 将内存地址入栈
+        task_b[i]->tss.esp -= 4; // 方法调用时返回地址保存在栈顶[ESP], 第一个参数保存在[ESP+4], 因此为了伪造方法调用, 压栈4字节
+        // 启动任务B
+        task_run(task_b[i], 2, i + 1); // task层级为2, 优先级依次递增0.01
+    }
+
+// 显示图层
+    layer_slide(layer_back, 0, 0); // 移动背景图层
+    layer_slide(layer_mouse, mx, my); // 移动鼠标图层到屏幕中点
+    layer_slide(layer_window, 8, 56); // 移动窗口图层
+    layer_slide(layer_window_b[0], 168, 56); // 移动窗口图层
+    layer_slide(layer_window_b[1], 8, 116); // 移动窗口图层
+    layer_slide(layer_window_b[2], 168, 116); // 移动窗口图层
+    layer_updown(layer_back, 0); // 切换背景图层高度
+    layer_updown(layer_mouse, 5); // 切换鼠标图层高度
+    layer_updown(layer_window, 4); // 切换窗口图层高度
+    layer_updown(layer_window_b[0], 1); // 切换窗口图层高度
+    layer_updown(layer_window_b[1], 2); // 切换窗口图层高度
+    layer_updown(layer_window_b[2], 3); // 切换窗口图层高度
+
 // 键盘和鼠标输入处理
     for (;;) {
         io_cli();
         if (fifo32_status(&fifo) == 0) {
             // 缓冲区为空
-            io_stihlt(); // 区别与"io_sti();io_hlt()", CPU规范中如果STI紧跟HLT, 那么两条指令间不受理中断
-            // io_sti(); // 性能测试时使用, 高速计数器需要全力运行, 因此取消io_hlt();
+            task_sleep(task_a); // 若没有中断, 则task_a休眠, 休眠后再开启中断, 防止无法休眠
+            // io_stihlt(); // 区别与"io_sti();io_hlt()", CPU规范中如果STI紧跟HLT, 那么两条指令间不受理中断
+            io_sti(); // 性能测试时使用, 高速计数器需要全力运行, 因此取消io_hlt();
         } else {
             // 缓冲区存在信息
             i = fifo32_get(&fifo);
@@ -194,25 +233,19 @@ void HariMain(void) {
                         layer_slide(layer_window, mx - 80, my - 8);
                     }
                 }
-            } else if (i == 10) {
-                // 10s定时器, 显示字符串
-                putfonts8_asc_layer(layer_back, 0, 64, COL8_FFFFFF, COL8_008484, "10[sec]", 7); // 显示10[sec]
-            } else if (i == 3) {
-                // 3s定时器, 显示字符串
-                putfonts8_asc_layer(layer_back, 0, 80, COL8_FFFFFF, COL8_008484, "3[sec]", 6); // 显示3[sec]
             } else if (i == 1)  {
                 // 光标闪烁定时器
                 // 若为0则显示黑色, 若为1则显示白色, 交替进行, 实现闪烁效果
-                timer_init(timer3, &fifo, 0);
-                timer_settime(timer3, 50); // 再次倒计时0.5s
+                timer_init(timer, &fifo, 0);
+                timer_settime(timer, 50); // 再次倒计时0.5s
                 cursor_c = COL8_000000;
                 boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示白色
                 layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
             } else if (i == 0) {
                 // 光标闪烁定时器
                 // 若为0则显示黑色, 若为1则显示白色, 交替进行, 实现闪烁效果
-                timer_init(timer3, &fifo, 1);
-                timer_settime(timer3, 50); // 再次倒计时0.5s
+                timer_init(timer, &fifo, 1);
+                timer_settime(timer, 50); // 再次倒计时0.5s
                 cursor_c = COL8_FFFFFF;
                 boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示黑色
                 layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
@@ -226,20 +259,29 @@ void HariMain(void) {
     buf: 窗体内容起始地址
     xsize, ysize: 窗体大小
     titile: 窗体标题
+    activa: 该窗口是否激活
 */
-void make_window8(unsigned char *buf, int xsize, int ysize, char *title)
-{
-	boxfill8(buf, xsize, COL8_C6C6C6, 0,         0,         xsize - 1, 0        ); // 上边界-亮灰
-	boxfill8(buf, xsize, COL8_FFFFFF, 1,         1,         xsize - 2, 1        ); // 上边界-内阴影-白
-	boxfill8(buf, xsize, COL8_C6C6C6, 0,         0,         0,         ysize - 1); // 左边界-亮灰
-	boxfill8(buf, xsize, COL8_FFFFFF, 1,         1,         1,         ysize - 2); // 左边界-内阴影-白
-	boxfill8(buf, xsize, COL8_848484, xsize - 2, 1,         xsize - 2, ysize - 2); // 右边界-暗灰
-	boxfill8(buf, xsize, COL8_000000, xsize - 1, 0,         xsize - 1, ysize - 1); // 右边界-阴影-黑
-	boxfill8(buf, xsize, COL8_C6C6C6, 2,         2,         xsize - 3, ysize - 3); // 窗体-亮灰
-	boxfill8(buf, xsize, COL8_000084, 3,         3,         xsize - 4, 20       ); // 标题栏-暗青
-	boxfill8(buf, xsize, COL8_848484, 1,         ysize - 2, xsize - 2, ysize - 2); // 下边界-暗灰
-	boxfill8(buf, xsize, COL8_000000, 0,         ysize - 1, xsize - 1, ysize - 1); // 下边界-阴影-黑
-	putfonts8_asc(buf, xsize, 24, 4, COL8_FFFFFF, title); // 标题
+void make_window8(unsigned char *buf, int xsize, int ysize, char *title, char active) {
+    /* 若窗口激活则标题栏显示暗青, 否则显示暗灰 */
+    char title_color, title_backgroud_color;
+    if (active != 0) {
+        title_color = COL8_FFFFFF;
+        title_backgroud_color = COL8_000084;
+    } else {
+        title_color = COL8_C6C6C6;
+        title_backgroud_color = COL8_848484;
+    }
+	boxfill8(buf, xsize, COL8_C6C6C6,           0,         0,         xsize - 1, 0        ); // 上边界-亮灰
+	boxfill8(buf, xsize, COL8_FFFFFF,           1,         1,         xsize - 2, 1        ); // 上边界-内阴影-白
+	boxfill8(buf, xsize, COL8_C6C6C6,           0,         0,         0,         ysize - 1); // 左边界-亮灰
+	boxfill8(buf, xsize, COL8_FFFFFF,           1,         1,         1,         ysize - 2); // 左边界-内阴影-白
+	boxfill8(buf, xsize, COL8_848484,           xsize - 2, 1,         xsize - 2, ysize - 2); // 右边界-暗灰
+	boxfill8(buf, xsize, COL8_000000,           xsize - 1, 0,         xsize - 1, ysize - 1); // 右边界-阴影-黑
+	boxfill8(buf, xsize, COL8_C6C6C6,           2,         2,         xsize - 3, ysize - 3); // 窗体-亮灰
+	boxfill8(buf, xsize, title_backgroud_color, 3,         3,         xsize - 4, 20       ); // 标题栏-暗青/暗灰
+	boxfill8(buf, xsize, COL8_848484,           1,         ysize - 2, xsize - 2, ysize - 2); // 下边界-暗灰
+	boxfill8(buf, xsize, COL8_000000,           0,         ysize - 1, xsize - 1, ysize - 1); // 下边界-阴影-黑
+	putfonts8_asc(buf, xsize, 24, 4, title_color, title); // 标题
 
     // 右上角按钮X, 坐标(5, xsize - 21), 大小(14 * 16)
     static char closebtn[14][16] = {
@@ -313,4 +355,42 @@ void putfonts8_asc_layer(struct LAYER *layer, int x, int y, int color, int backc
         putfonts8_asc(layer->buf, layer->bxsize, x, y, color, string); // 显示新的数据
         layer_refresh(layer, x, y, x + length * 8, y + 16); // 刷新图层
         return;
+}
+
+/*
+    任务B
+*/
+void task_b_main(struct LAYER *layer) {
+    struct FIFO32 fifo;
+    struct TIMER *timer_ls;
+    int i, fifobuf[128], count = 0, count0 = 0;
+    char s[12];
+
+    // 设置中断缓冲区
+    fifo32_init(&fifo, 128, fifobuf, 0);
+    // 设置定时器
+    timer_ls = timer_alloc(); // 运行速度测试定时器
+    timer_init(timer_ls, &fifo, 100);
+    timer_settime(timer_ls, 100); // 1s
+
+    // 处理中断
+    for (;;) {
+        // 计数
+        count++;
+        io_cli();
+        if (fifo32_status(&fifo) == 0) {
+            //io_stihlt();
+            io_sti(); // 性能测试时使用, 高速计数器需要全力运行, 因此取消io_hlt();
+        } else {
+            // 定时器中断处理
+            i = fifo32_get(&fifo);
+            io_sti();
+            if (i == 100) {
+                sprintf(s, "%11d", count - count0);
+                putfonts8_asc_layer(layer, 24, 28, COL8_000000, COL8_C6C6C6, s, 11);
+                count0 = count;
+                timer_settime(timer_ls, 100); // 重置计时器, 再次计时
+            }
+        }
+    }
 }

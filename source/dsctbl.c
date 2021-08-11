@@ -18,6 +18,12 @@ GDT(global segment descriptor table): 全局段号记录表, GDT由SEGMENT_DESCR
             11110010(0xf2): 应用程序用, 可读写的段. 不可指定
             11111010(0xfa): 应用程序用, 可执行的段. 可读不可写
 
+段地址(如DS:0x00ff)获取过程:
+- 段寄存器(16位, 如DS, 但低3位不能使用, 因此可以存放8192个段号)存放段号
+- GDTR存放GDT起始地址和有效个数, 根据段号和GDTR信息到GDT地址
+- 根据GDT地址, 获取到GDT信息(主要是段地址), 里面存放着段起始地址, 上限地址, 段属性
+- 段地址+0xff获得准确地址
+
 IDT(interrupt descriptor table): 中断记录表, IDT由GATE_DESCRIPTOR(8字节)组成
 - IDTR(interrupt descriptor table register)(48位)中保存IDT的起始地址和个数
 - IDT保存许多GATE_DESCRIPTOR(8字节)

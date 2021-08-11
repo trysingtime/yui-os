@@ -13,10 +13,11 @@
         GLOBAL _io_out8, _io_out16, _io_out32
         GLOBAL _io_load_eflags, _io_store_eflags
         GLOBAL _write_mem8, _read_mem8
-        GLOBAL _load_gdtr, _load_idtr
+        GLOBAL _load_gdtr, _load_idtr, _load_tr
         GLOBAL _load_cr0, _store_cr0
         GLOBAL _asm_inthandler20, _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
         GLOBAL _memtest_sub
+        GLOBAL _farjmp
 	EXTERN _inthandler20, _inthandler21, _inthandler27, _inthandler2c
 
 [SECTION .text]             ; 目标文件中写了这些之后再写程序
@@ -85,13 +86,13 @@ _io_out32:       ; void io_out32(int port, int data);
         OUT     DX,EAX
         RET        
 
-; 读取EFLAGS寄存器(32位)(包含进位标志(第0位),中断标志(第9位),AC标志位(第18位, 486CPU以上才有))
+; 读取EFLAGS寄存器(32位)(包含进位标志CF(第0位),中断标志IF(第9位),AC标志位(第18位, 486CPU以上才有))
 _io_load_eflags:        ; int io_load_eflags(void);
         PUSHFD          ; 直接操作EFLAGS, push flags double-world
         POP     EAX
         RET
 
-; 还原EFLAGS寄存器(32位)(包含进位标志(第0位),中断标志(第9位))
+; 还原EFLAGS寄存器(32位)(包含进位标志CF(第0位),中断标志IF(第9位),AC标志位(第18位, 486CPU以上才有))
 _io_store_eflags:        ; void io_sotre_eflags(int eflags);
         MOV     EAX,[ESP+4]
         PUSH    EAX
@@ -123,6 +124,11 @@ _load_idtr:	; void load_idtr(int limit, int addr);
         MOV	AX,[ESP+4]		; 只需要limit低位两字节
         MOV	[ESP+6],AX              ; 低位两字节覆盖高位两字节
         LIDT	[ESP+6]                 ; 从指定地址读取6个字节
+        RET
+
+; 向TR(task register)寄存器(任务切换时值会自动变化)存入数值
+_load_tr:       ; void load_tr(int tr);
+        LTR     [ESP+4]
         RET
 
 ; CR0寄存器(32位),bit30+bit29置1禁止缓存,bit31置为0禁用分页,bit0置为1切换到保护模式
@@ -237,3 +243,7 @@ mts_fin:
 		POP		EDI
 		RET
 
+; far跳转, 目的地址为cs:eip, 若目的地址为TSS, 则为任务切换
+_farjmp:    ; void farjmp(int eip, int cs);
+                JMP     FAR [ESP+4]     ; far-JMP, 同时改变EIP和CS, CS段寄存器低3位无效, 需要*8. 若此处目的地为TSS, 识别为任务切换
+                RET                     ; 若为任务切换, 返回后会继续执行代码, 需要RET

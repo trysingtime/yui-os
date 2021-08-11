@@ -12,34 +12,59 @@ struct BOOTINFO {
 #define ADR_BOOTINFO    0x00000ff0
 
 /* naskfunc.nas */
-
-void io_hlt(void); // 待机
-void io_cli(void); // 中断标志置0, 禁止中断
-void io_sti(void); // 中断标志置1, 允许中断
-void io_stihlt(void); // 允许中断并待机
-int io_in8(int port); // 从指定端口读取一个字节
-void io_out8(int port, int data); //向指定设备(port)输出数据
-int io_load_eflags(void); // 读取EFLAGS寄存器(包含进位标志(第0位),中断标志(第9位))
-void io_store_eflags(int eflags); // 还原EFLAGS寄存器(包含进位标志(第0位),中断标志(第9位))
-char read_mem8(int addr); // 从addr指定的地址读取一个字节
-void load_gdtr(int limit, int addr); // 把已知的GDT起始地址和段个数加载到GDTR寄存器
-void load_idtr(int limit, int addr); // 把已知的IDT起始地址和中断个数加载到IDTR寄存器
-int load_cr0(void); // CR0寄存器(32位),bit30+bit29置1禁止缓存,bit31置为0禁用分页,bit0置为1切换到保护模式
+/* 待机 */
+void io_hlt(void);
+/* 中断标志置0, 禁止中断 */
+void io_cli(void);
+/* 中断标志置1, 允许中断 */
+void io_sti(void);
+/* 允许中断并待机 */
+void io_stihlt(void);
+/* 从指定端口读取一个字节 */
+int io_in8(int port);
+/* 向指定设备(port)输出数据 */
+void io_out8(int port, int data);
+/* 读取EFLAGS寄存器(包含进位标志CF(第0位),中断标志IF(第9位),AC标志位(第18位, 486CPU以上才有)) */
+int io_load_eflags(void);
+/* 还原EFLAGS寄存器(包含进位标志CF(第0位),中断标志IF(第9位),AC标志位(第18位, 486CPU以上才有)) */
+void io_store_eflags(int eflags);
+/* 从addr指定的地址读取一个字节 */
+char read_mem8(int addr);
+/* 把已知的GDT起始地址和段个数加载到GDTR寄存器 */
+void load_gdtr(int limit, int addr);
+/* 把已知的IDT起始地址和中断个数加载到IDTR寄存器 */
+void load_idtr(int limit, int addr);
+/* 向TR(task register)寄存器(任务切换时值会自动变化)存入数值 */
+void load_tr(int tr);
+/* CR0寄存器(32位)读取值,bit30+bit29置1禁止缓存,bit31置为0禁用分页,bit0置为1切换到保护模式 */
+int load_cr0(void);
+/* CR0寄存器(32位)存储值 */
 void store_cr0(int cr0);
-void asm_inthandler20(void); // 定时器中断处理函数
-void asm_inthandler21(void); // 键盘中断处理函数
-void asm_inthandler27(void); // 电气噪声处理函数
-void asm_inthandler2c(void); // 鼠标中断处理函数
-unsigned int memtest_sub(unsigned int start, unsigned int end); // 内存容量检查
+/* 定时器中断处理函数 */
+void asm_inthandler20(void);
+/* 键盘中断处理函数 */
+void asm_inthandler21(void);
+/* 电气噪声处理函数 */
+void asm_inthandler27(void);
+/* 鼠标中断处理函数 */
+void asm_inthandler2c(void);
+/* 内存容量检查 */
+unsigned int memtest_sub(unsigned int start, unsigned int end);
+/* 
+    far跳转, 目的地址为cs:eip, 若目的地址为TSS, 则为任务切换
+    - cs:eip: 目的地址, 若cs为TSS段号, 则eip没有作用, 一般设置为0
+*/
+void farjmp(int eip, int cs);
 
 /* fifo.c */
 
 // 缓冲区结构
 struct FIFO32 {
     int *buf; // 缓存区地址
-    int p, q, size, free, flags; // 写入位置, 读出位置, 缓存区总大小, 空余大小, 溢出标识 
+    int p, q, size, free, flags; // 写入位置, 读出位置, 缓存区总大小, 空余大小, 溢出标识
+    struct TASK *task; // 满足条件后自动唤醒task
 };
-void fifo32_init(struct FIFO32 *fifo, int size, int *buf); // 初始化缓冲区
+void fifo32_init(struct FIFO32 *fifo, int size, int *buf, struct TASK *task); // 初始化缓冲区
 int fifo32_put(struct FIFO32 *fifo, int data); // 缓冲区写入1字节
 int fifo32_get(struct FIFO32 *fifo); // 缓冲区读出1字节
 int fifo32_status(struct FIFO32 *fifo); // 缓冲区当前深度
@@ -120,6 +145,8 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int acce
 #define LIMIT_BOTPAK	0x0007ffff // 段号上限地址
 #define AR_DATA32_RW	0x4092
 #define AR_CODE32_ER	0x409a
+#define AR_INTGATE32	0x008e
+#define AR_TSS32		0x0089
 #define AR_INTGATE32	0x008e
 
 /* int.c */
@@ -264,9 +291,70 @@ struct TIMERCTL {
     struct TIMER timer[MAX_TIMER];
 };
 extern struct TIMERCTL timerctl;
-void init_pic(void);
+void init_pit(void);
 struct TIMER *timer_alloc(void);
 void timer_free(struct TIMER *timer);
 void timer_init(struct TIMER *timer, struct FIFO32 *fifo, int data);
 void timer_settime(struct TIMER *timer, unsigned int timeout);
 void inthandler20(int *esp);
+
+/* multitask.c */
+
+#define MAX_TASKS       1000 // 最大任务数量
+#define MAX_TASK_LEVELS 10 // 最大任务层级
+#define TASK_GDT0       3 // GDT从几号开始分配给TSS
+/*
+    TSS(task status segment)(32位, 26个int成员, 总计104字节): 任务状态段, 需要在GDT注册才能使用
+    CPU任务切换时, 将寄存器的值保存在TSS中, 后续切换回任务时, 再读取回去
+    如果一条JMP指令的目的地址段是TSS, 则解析为任务切换
+*/
+struct TSS32 {
+    int backlink, esp0, ss0, esp1, ss1, esp2, ss2, cr3; // 任务设置相关的信息(任务切换时不变)
+	int eip, eflags, eax, ecx, edx, ebx, esp, ebp, esi, edi; // 任务切换时保存32位寄存器值
+	int es, cs, ss, ds, fs, gs; // 任务切换时保存16位寄存器值
+	int ldtr, iomap; // 任务设置相关的信息(任务切换时不变)
+};
+/*
+    任务
+    - selector: GDT中TSS编号
+    - flags: 任务状态, 0: 未激活,1: 正在使用,2: 正在运行
+    - level: 当前任务属于哪个层级(level)
+    - priority: 任务优先级(任务切换间隔, 执行多少秒后切换到下一个任务, 单位: priority/100s)
+    - tss: TSS结构
+*/
+struct TASK {
+    int selector, flags;
+    int level, priority;
+    struct TSS32 tss;
+};
+/*
+    任务层级
+    - running_number: 当前层级正在运行的任务数量
+    - current: 当前层级当前运行的是哪个任务
+    - index: 当前层级正在运行任务的升序索引
+*/
+struct TASKLEVEL {
+    int running_number;
+    int current;
+    struct TASK *index[MAX_TASKS / MAX_TASK_LEVELS];
+
+};
+/*
+    任务控制器
+    - current_level: 正在活动的任务层级
+    - level_change: 任务层级变动标识, 若为1则表明层级有变动, 需要更新层级信息
+    - level: 所有任务层级
+    - tasks: 所有任务
+*/
+struct TASKCTL {
+    int current_level;
+    char level_change;
+    struct TASKLEVEL level[MAX_TASK_LEVELS];
+    struct TASK tasks[MAX_TASKS];
+};
+extern struct TIMER *task_timer;
+struct TASK *taskctl_init(struct MEMMNG *memmng);
+struct TASK *task_alloc(void);
+void task_run(struct TASK *task, int level, int priority);
+void task_switch(void);
+void task_sleep(struct TASK *task);

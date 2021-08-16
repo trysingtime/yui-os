@@ -272,7 +272,7 @@ void HariMain(void) {
                         fifo32_put(&task_console->fifo, s[0] + 256); // 发送对应键盘字符的ASCII
                     }
                 }
-                if (i == 256 + 0x0e && cursor_x > 8) {
+                if (i == 256 + 0x0e) {
                     /* 退格键 */
                     if (currentwindow == 0) {
                         // 当前任务窗口, 直接显示
@@ -285,16 +285,34 @@ void HariMain(void) {
                         fifo32_put(&task_console->fifo, 8 + 256); // 发送对应键盘字符的ASCII, ASCII中空格为8
                     }
                 }
+                if (i == 256 + 0x1c) {
+                    /* 回车键 */
+                    if (currentwindow != 0) {
+                        fifo32_put(&task_console->fifo, 10 + 256); // 发送对应键盘字符的ASCII
+                    }
+                }
                 if (i == 256 + 0x0f) {
                     /* TAB键 */
                     if (currentwindow == 0) {
                         currentwindow = 1;
+                        // 标题栏切换
                         make_title8(buf_window, layer_window->bxsize, "task_a", 0);
                         make_title8(buf_console, layer_console->bxsize, "console", 1);
+                        // 主窗口光标停止闪烁, 此处标志, 后续处理
+                        cursor_c = -1;
+                        // 主窗口隐藏光标(显示成背景色白色)
+                        boxfill8(layer_window->buf, layer_window->bxsize, COL8_FFFFFF, cursor_x, 28, cursor_x + 7, 43);
+                        // 目标窗口光标开始闪烁
+                        fifo32_put(&task_console->fifo, 2);
                     } else {
                         currentwindow = 0;
+                        // 标题栏切换
                         make_title8(buf_window, layer_window->bxsize, "task_a", 1);
-                        make_title8(buf_console, layer_console->bxsize, "console", 0);                            
+                        make_title8(buf_console, layer_console->bxsize, "console", 0);
+                        // 主窗口光标闪烁, 此处标志, 后续处理
+                        cursor_c = COL8_000000;
+                        // 目标窗口光标停止闪烁
+                        fifo32_put(&task_console->fifo, 3);                        
                     }
                     layer_refresh(layer_window, 0 ,0, layer_window->bxsize, 21);
                     layer_refresh(layer_console, 0 ,0, layer_console->bxsize, 21);
@@ -349,7 +367,10 @@ void HariMain(void) {
                 }
 
                 // 重绘光标
-                boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示白色
+                // 是否显示光标
+                if (cursor_c >= 0) {
+                    boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示白色
+                }
                 layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
             } else if (512 <= i && i <= 767) {
                 // 鼠标缓冲区处理
@@ -398,22 +419,25 @@ void HariMain(void) {
                         layer_slide(layer_window, mx - 80, my - 8);
                     }
                 }
-            } else if (i == 1)  {
+            } else if (i <= 1) {
                 // 光标闪烁定时器
                 // 若为0则显示黑色, 若为1则显示白色, 交替进行, 实现闪烁效果
-                timer_init(timer, &fifo, 0);
+                if (i != 0)  {
+                    timer_init(timer, &fifo, 0);
+                    if (cursor_c >= 0) {
+                        cursor_c = COL8_000000;
+                    }
+                } else {
+                    timer_init(timer, &fifo, 1);
+                    if (cursor_c >= 0) {
+                        cursor_c = COL8_FFFFFF;
+                    }
+                }
                 timer_settime(timer, 50); // 再次倒计时0.5s
-                cursor_c = COL8_000000;
-                boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示白色
-                layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
-            } else if (i == 0) {
-                // 光标闪烁定时器
-                // 若为0则显示黑色, 若为1则显示白色, 交替进行, 实现闪烁效果
-                timer_init(timer, &fifo, 1);
-                timer_settime(timer, 50); // 再次倒计时0.5s
-                cursor_c = COL8_FFFFFF;
-                boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示黑色
-                layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
+                if (cursor_c >= 0) {
+                    boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示黑色
+                    layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
+                }
             }
         }
     }
@@ -578,7 +602,7 @@ void task_b_implement(struct LAYER *layer) {
     控制台任务
 */
 void task_console_implement(struct LAYER *layer) {
-    int i, cursor_x = 16, cursor_c = COL8_000000;
+    int i, cursor_x = 16, cursor_y = 28, cursor_c = -1;
     char s[2];
     // 获取当前任务
     struct TASK *task = task_current();
@@ -605,43 +629,83 @@ void task_console_implement(struct LAYER *layer) {
             // 定时器中断处理
             i = fifo32_get(&task->fifo);
             io_sti();
-            if (i == 1)  {
+            if (i <= 1) {
                 // 光标闪烁定时器
                 // 若为0则显示黑色, 若为1则显示白色, 交替进行, 实现闪烁效果
-                timer_init(timer, &task->fifo, 0);
+                if (i != 0)  {
+                    timer_init(timer, &task->fifo, 0);
+                    if (cursor_c >= 0) {
+                        cursor_c = COL8_FFFFFF;
+                    }
+                } else{
+                    timer_init(timer, &task->fifo, 1);
+                    if (cursor_c >= 0) {
+                        cursor_c = COL8_000000;
+                    }
+                }
                 timer_settime(timer, 50); // 再次倒计时0.5s
-                cursor_c = COL8_000000;
-                boxfill8(layer->buf, layer->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示白色
-                layer_refresh(layer, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
-            } else if (i == 0) {
-                // 光标闪烁定时器
-                // 若为0则显示黑色, 若为1则显示白色, 交替进行, 实现闪烁效果
-                timer_init(timer, &task->fifo, 1);
-                timer_settime(timer, 50); // 再次倒计时0.5s
+            }
+            // 窗口是否激活
+            if (i == 2) {
+                // 窗口已激活, 光标闪烁
                 cursor_c = COL8_FFFFFF;
-                boxfill8(layer->buf, layer->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示黑色
-                layer_refresh(layer, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
-            } else if (256 <= i && i <= 511) {
+            }
+            if (i == 3) {
+                // 窗口未激活, 光标停止闪烁
+                cursor_c = -1;
+                // 隐藏光标(显示成背景色白色)
+                boxfill8(layer->buf, layer->bxsize, COL8_000000, cursor_x, 28, cursor_x + 7, 43);
+            }
+            if (256 <= i && i <= 511) {
                 // 键盘缓冲区处理(taska发送过来的)
                 if (i == 256 + 8) {
                     /* 退格键 */
                     if (cursor_x > 16) {
-                        putfonts8_asc_layer(layer, cursor_x, 28, COL8_FFFFFF, COL8_000000, " ", 1); // 擦除显示的键盘按键
+                        putfonts8_asc_layer(layer, cursor_x, cursor_y, COL8_FFFFFF, COL8_000000, " ", 1); // 擦除显示的键盘按键
                         cursor_x -= 8; // 光标后移
                     }
+                } else if (i == 256 + 10) {
+                    /* 回车键 */
+                    putfonts8_asc_layer(layer, cursor_x, cursor_y, COL8_FFFFFF, COL8_000000, " ", 1); // 擦除旧行显示的光标
+                    if (cursor_y < 28 + 112) {
+                        // 光标换行
+                        cursor_y += 16;
+                    } else {
+                        // 窗口滚动
+                        // 遍历每一行, 将每个像素向上移动一行(16像素距离)
+                        int x, y;
+                        for (y = 28; y < 28 + 112; y++) {
+                            for (x = 8; x < 8 + 240; x++) {
+                                layer->buf[x + y * layer->bxsize] = layer->buf[x + (y + 16) * layer->bxsize];
+                            }
+                        }
+                        // 将最后一行每个像素涂成黑色
+                        for (y = 28 + 112; y < 28 + 128; y++) {
+                            for (x = 8; x < 8 + 240; x++) {
+                                layer->buf[x + y * layer->bxsize] = COL8_000000;
+                            }
+                        }
+                        // 重绘整个图层
+                        layer_refresh(layer, 8, 28, 8 + 240, 28 + 128);
+                    }
+                    putfonts8_asc_layer(layer, 8, cursor_y, COL8_FFFFFF, COL8_000000, ">", 1); // 显示新一行提示符
+                    cursor_x = 16; // 光标重置到开头                      
                 } else {
                     /* 普通字符 */
                     if (cursor_x < 240) {
                         s[0] = i - 256;
                         s[1] = 0;
-                        putfonts8_asc_layer(layer, cursor_x, 28, COL8_FFFFFF, COL8_000000, s, 1); // 显示键盘按键
+                        putfonts8_asc_layer(layer, cursor_x, cursor_y, COL8_FFFFFF, COL8_000000, s, 1); // 显示键盘按键
                         cursor_x += 8; // 光标前移
                     }
                 }
-                // 重绘光标
-                boxfill8(layer->buf, layer->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示白色
-                layer_refresh(layer, cursor_x, 28, cursor_x + 8, 44); // 刷新图层                
             }
+            // 重绘光标
+            // 是否显示光标
+            if (cursor_c >= 0) {
+                boxfill8(layer->buf, layer->bxsize, cursor_c, cursor_x, cursor_y, cursor_x + 7, cursor_y + 15); // 显示白色
+            }
+            layer_refresh(layer, cursor_x, cursor_y, cursor_x + 8, cursor_y + 16); // 刷新图层                
         }
     }
 }

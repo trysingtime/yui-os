@@ -1,5 +1,4 @@
 /* asmhead.nas */
-
 // 缓存在指定位置的BOOT_INFO(asmhead.nas中)
 struct BOOTINFO {
     char cyls;              // 启动时读取的柱面数
@@ -9,7 +8,8 @@ struct BOOTINFO {
     short screenx, screeny; // 画面分辨率
     char *vram; // VRAM起始地址
 };
-#define ADR_BOOTINFO    0x00000ff0
+#define ADR_BOOTINFO    0x00000ff0  // asmhead.nas中存入的bootinfo信息
+#define ADR_DISKIMG     0x00100000  // 磁盘内容写入内存中的起始地址
 
 /* naskfunc.nas */
 /* 待机 */
@@ -361,3 +361,35 @@ struct TASK *task_alloc(void);
 void task_run(struct TASK *task, int level, int priority);
 void task_switch(void);
 void task_sleep(struct TASK *task);
+
+/* window.c */
+
+void make_window8(unsigned char *buf, int xsize, int ysize, char *title, char active);
+void make_title8(unsigned char *buf, int xsize, char *title, char active);
+void make_textbox8(struct LAYER *layer, int x0, int y0, int sx, int sy, int c);
+void putfonts8_asc_layer(struct LAYER *layer, int x, int y, int color, int backcolor, char *string, int length);
+
+/* console.c */
+
+void task_console_implement(struct LAYER *layer_back, unsigned int memtotal);
+int console_newline(int cursor_y, struct LAYER *layer);
+
+/* file.c */
+/*
+    磁盘文件信息(32字节)
+    - 文件信息保存在磁盘的0x2600~0x4200(读入内存后为0x102600~0x104200), 只能包含224个文件信息
+    - name(文件名)第一字节为0xe5, 代表文件已删除, 0x00代表这一段不含任何文件名信息
+    - type(文件属性): 一般0x20/0x00,0x01(只读文件),0x02(隐藏文件),0x04(系统文件),0x08(非文件信息,如磁盘名称),0x10目录
+    - clustno(簇号): 文件从磁盘哪个簇(软盘每簇512字节,刚好一扇区)开始存放, 磁盘中文件地址: clustno*512 + 0x003e00
+*/
+struct FILEINFO {
+    unsigned char name[8], ext[3], type;
+    char reserve[10];
+    unsigned short time, data, clustno;
+    unsigned int size;
+};
+void file_readfat(int *fat, unsigned char *img);
+void fiel_loadfile(int clustno, int size, char *buf, int *fat, char *img);
+
+/* taskb.c */
+void task_b_implement(struct LAYER *layer_back);

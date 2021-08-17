@@ -1,10 +1,12 @@
 # 变量
 OBJS_BOOTPACK = bootpack.obj naskfunc.obj hankaku.obj graphic.obj dsctbl.obj int.obj \
-				fifo.obj keyboard.obj mouse.obj memory.obj layer.obj timer.obj multitask.obj
+				fifo.obj keyboard.obj mouse.obj memory.obj layer.obj timer.obj multitask.obj \
+				window.obj taskb.obj console.obj file.obj
 OBJS_BOOTPACK_TARGET = target\bootpack.obj target\naskfunc.obj target\hankaku.obj \
 						target\graphic.obj target\dsctbl.obj target\int.obj target\fifo.obj \
 						target\keyboard.obj target\mouse.obj target\memory.obj target\layer.obj \
-						target\timer.obj target\multitask.obj
+						target\timer.obj target\multitask.obj target\window.obj target\taskb.obj \
+						target\console.obj target\file.obj
 
 TOOLPATH = tolset/z_tools/
 INCPATH  = tolset/z_tools/haribote/
@@ -67,6 +69,8 @@ haribote.img : ipl10.bin haribote.sys Makefile
 	$(EDIMG)   imgin:tolset/z_tools/fdimg0at.tek \
 		wbinimg src:target/ipl10.bin len:512 from:0 to:0 \
 		copy from:target/haribote.sys to:@: \
+		copy from:source/ipl10.nas to:@: \
+		copy from:make.bat to:@: \
 		imgout:target/haribote.img
 
 # 通配符规则

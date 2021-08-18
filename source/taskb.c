@@ -1,5 +1,5 @@
 #include "bootpack.h"
-
+#include <stdio.h> // sprintf()
 
 /*
     任务B

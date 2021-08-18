@@ -52,7 +52,7 @@ void asm_inthandler2c(void);
 unsigned int memtest_sub(unsigned int start, unsigned int end);
 /* 
     far跳转, 目的地址为cs:eip, 若目的地址为TSS, 则为任务切换
-    - cs:eip: 目的地址, 若cs为TSS段号, 则eip没有作用, 一般设置为0
+    - cs:eip: 目的地址, 若cs为TSS段号, 则eip没有作用, 一般设置为0, CS段寄存器低3位无效, 需要*8
 */
 void farjmp(int eip, int cs);
 
@@ -371,8 +371,25 @@ void putfonts8_asc_layer(struct LAYER *layer, int x, int y, int color, int backc
 
 /* console.c */
 
-void task_console_implement(struct LAYER *layer_back, unsigned int memtotal);
-int console_newline(int cursor_y, struct LAYER *layer);
+/*
+    控制台
+    - layer: 控制台所在的图层
+    - cursr_x, cursor_y: 控制台光标在控制台图层中x, y轴的坐标
+    - cursor_color: 控制台光标颜色
+*/
+struct CONSOLE {
+    struct LAYER *layer;
+    int cursor_x, cursor_y, cursor_color;
+};
+void console_task(struct LAYER *layer_back, unsigned int memorytotal);
+void console_putchar(struct CONSOLE *console, int character, char move);
+void console_newline(struct CONSOLE *console);
+void console_runcmd(char *cmdline, struct CONSOLE *console, int *fat, unsigned int memorytotal);
+void cmd_mem(struct CONSOLE *console, unsigned int memorytotal);
+void cmd_cls(struct CONSOLE *console);
+void cmd_dir(struct CONSOLE *console);
+void cmd_type(struct CONSOLE *console, int *fat, char *cmdline);
+void app_hlt(struct CONSOLE *console, int *fat);
 
 /* file.c */
 /*
@@ -390,6 +407,7 @@ struct FILEINFO {
 };
 void file_readfat(int *fat, unsigned char *img);
 void fiel_loadfile(int clustno, int size, char *buf, int *fat, char *img);
+struct FILEINFO *file_search(char *filefullname, struct FILEINFO *fileinfo, int max);
 
 /* taskb.c */
 void task_b_implement(struct LAYER *layer_back);

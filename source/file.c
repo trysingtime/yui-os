@@ -61,3 +61,65 @@ void fiel_loadfile(int clustno, int size, char *buf, int *fat, char *img) {
     }
     return;
 }
+
+/*
+    根据文件全名查找磁盘文件信息中的文件
+    - filefullname: 文件全名(文件名+'.'+文件后缀)
+    - fileinfo: 磁盘文件信息地址(0x2600~0x4200)
+    - max: 磁盘文件信息数量(0x2600~0x4200只能有224个文件信息(32字节))
+*/
+struct FILEINFO *file_search(char *filefullname, struct FILEINFO *fileinfo, int max) {
+    // 清空变量, 用以存放文件名
+    char s[12];
+    int y;
+    for (y = 0; y < 11; y++) {
+        s[y] = ' ';
+    }
+    y = 0;
+    // 截取文件名(type 文件名+'.'+文件后缀)(文件名大于8字节无法处理)
+    int x;
+    for (x = 0; filefullname[x] != 0; x++) {
+        if (y >= 11) {
+            // 文件名过长
+            return 0;
+        }
+        if (filefullname[x] == '.' && y <= 8) {
+            // 读取到'.'则认为文件名已取完
+            y = 8;
+        } else {
+            // 文件名转为大写
+            s[y] = filefullname[x];
+            if ('a' <= s[y] && s[y] <= 'z') {
+                s[y] -= 0x20;
+            }
+            y++;
+        }
+    }
+    // 根据文件名查找文件
+    // 遍历所有文件信息(0x2600~0x4200只能有224个文件信息(32字节))
+    for (x = 0; x < max; x++) {
+        if (fileinfo[x].name[0] == 0x00) {
+            // 文件名第一个字节为0x00代表这一段不包含任何文件名信息
+            break;
+        }
+        if (fileinfo[x].name[0] == 0xe5) {
+            // 文件名第一个字节为0xe代表这个文件已被删除
+            break;
+        }
+        // type(文件属性): 一般0x20/0x00,0x01(只读文件),0x02(隐藏文件),0x04(系统文件),0x08(非文件信息,如磁盘名称),0x10目录
+        if ((fileinfo[x].type & 0x18) == 0) {
+            for (y = 0; y < 11; y++) {
+                if (fileinfo[x].name[y] != s[y]) {
+                    // 文件名不一致, 查找下一个文件
+                    break;
+                }
+            }
+            // 找到文件
+            if (y == 11) {
+                return fileinfo + x;
+            }
+        }
+    }
+    // 没有找到文件
+    return 0;
+}

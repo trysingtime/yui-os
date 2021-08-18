@@ -1,6 +1,5 @@
 #include "bootpack.h"
 #include <stdio.h> // sprintf()
-#include <string.h> // strcmp(), strncmp
 
 #define KEYCMD_LED      0xed
 
@@ -176,7 +175,7 @@ void HariMain(void) {
     task_console = task_alloc();
     // 任务TSS寄存器初始化
     task_console->tss.esp = memory_alloc_4k(mng, 64 * 1024) + 64 * 1024; // 任务使用的栈(64KB), esp存入栈顶(栈末尾高位地址)的地址
-    task_console->tss.eip = (int) &task_console_implement;
+    task_console->tss.eip = (int) &console_task;
     task_console->tss.es = 1 * 8;
     task_console->tss.cs = 2 * 8; // 使用段号2
     task_console->tss.ss = 1 * 8;

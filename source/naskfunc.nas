@@ -17,8 +17,10 @@
         GLOBAL _load_cr0, _store_cr0
         GLOBAL _asm_inthandler20, _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
         GLOBAL _memtest_sub
-        GLOBAL _farjmp
+        GLOBAL _farjmp, _farcall
+        GLOBAL _asm_console_putchar
 	EXTERN _inthandler20, _inthandler21, _inthandler27, _inthandler2c
+        EXTERN _console_putchar
 
 [SECTION .text]             ; 目标文件中写了这些之后再写程序
 
@@ -243,7 +245,22 @@ mts_fin:
 		POP		EDI
 		RET
 
-; far跳转, 目的地址为cs:eip, 若目的地址为TSS, 则为任务切换
-_farjmp:    ; void farjmp(int eip, int cs);
-                JMP     FAR [ESP+4]     ; far-JMP, 同时改变EIP和CS, CS段寄存器低3位无效, 需要*8. 若此处目的地为TSS, 识别为任务切换
+; far跳转指令, 目的地址为cs:eip. 若cs(段号)为TSS, 识别为任务切换
+_farjmp:        ; void farjmp(int eip, int cs);
+                JMP     FAR [ESP+4]     ; far-JMP, 同时修改EIP和CS, 从而实现指令跳转. CS段寄存器低3位无效, 因此需要*8. 若cs(段号)为TSS, 识别为任务切换
                 RET                     ; 若为任务切换, 返回后会继续执行代码, 需要RET
+
+; far调用函数, 目的地址为cs:eip.调用的函数返回时需要使用far-RET
+_farcall:       ; void farcall(int eip, int cs);
+                CALL    FAR [ESP+4]     ; far-CALL, 同时修改EIP和CS, 从而实现函数调用. CS段寄存器低3位无效, 因此需要*8.
+                RET                     ; 使用far-Call跨段调用其他段的函数(例如应用程序), 调用的函数返回时需要使用far-RET, 此处仅为普通RET
+
+; 自制系统API, 显示字符
+_asm_console_putchar:   ; void console_putchar(struct CONSOLE *console, int character, char move);
+                PUSH            1               ; move参数入栈: 显示字符后光标是否后移
+                AND             EAX,0xff        ; character参数, 只保留低8位, 高位全部置0
+                PUSH            EAX             ; character参数入栈: 要显示的字符
+                PUSH            DWORD [0x0fec]  ; 执行字符显示的控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 将自身地址放入0x0fec
+                CALL            _console_putchar; 调用C语言函数
+                ADD             ESP,12          ; 函数执行完毕后将刚才入栈的数据丢弃
+                RETF                            ; 应用使用far-Call跨段调用操作系统(段号2)API, 因此相应使用far-RET回应

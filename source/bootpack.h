@@ -51,10 +51,15 @@ void asm_inthandler2c(void);
 /* 内存容量检查 */
 unsigned int memtest_sub(unsigned int start, unsigned int end);
 /* 
-    far跳转, 目的地址为cs:eip, 若目的地址为TSS, 则为任务切换
+    far跳转指令, 目的地址为cs:eip. 若cs(段号)为TSS, 识别为任务切换
     - cs:eip: 目的地址, 若cs为TSS段号, 则eip没有作用, 一般设置为0, CS段寄存器低3位无效, 需要*8
 */
 void farjmp(int eip, int cs);
+/*
+    far调用函数, 目的地址为cs:eip.调用的函数返回时需要使用far-RET
+    - cs:eip: 目的函数地址, CS段寄存器低3位无效, 需要*8
+*/
+void farcall(int eip, int cs);
 
 /* fifo.c */
 

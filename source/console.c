@@ -12,6 +12,8 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
     console.cursor_x = 8;
     console.cursor_y = 28;
     console.cursor_color = -1; // 颜色为-1, 不显示
+    // API: 将控制台内存地址放入0x0fec中, 应用程序可以通过0x0fec获取控制台地址, 进而调用控制台函数
+    *((int *) 0x0fec) = (int) &console;
 
     /* 获取当前任务 */
     struct TASK *task = task_current();
@@ -362,8 +364,8 @@ void app_hlt(struct CONSOLE *console, int *fat) {
         // 将hlt.hrb注册到GDT, 段号1003(段号1~2由dsctbl.c使用, 段号3~1002由multitask.c使用)
         struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADR_GDT; // GDT地址
         set_segmdesc(gdt + 1003, fileinfo->size - 1, (int) p, AR_CODE32_ER);
-        // 切换1003段
-        farjmp(0, 1003 * 8);
+        // 使用far-Call跨段调用应用函数(段号1003), 因此应用函数上要相应使用far-RET回应
+        farcall(0, 1003 * 8);
         // 释放内存
         memory_free_4k(mng, (int) p, fileinfo->size);
     } else {

@@ -60,6 +60,8 @@ void farjmp(int eip, int cs);
     - cs:eip: 目的函数地址, CS段寄存器低3位无效, 需要*8
 */
 void farcall(int eip, int cs);
+/* 系统API中断函数, 由INT 0x40触发, 根据ebx值调用系统函数 */
+void asm_system_api(void);
 
 /* fifo.c */
 
@@ -389,12 +391,15 @@ struct CONSOLE {
 void console_task(struct LAYER *layer_back, unsigned int memorytotal);
 void console_putchar(struct CONSOLE *console, int character, char move);
 void console_newline(struct CONSOLE *console);
+void console_putstr0(struct CONSOLE *console, char *str);
+void console_putstr1(struct CONSOLE *console, char *str, int length);
 void console_runcmd(char *cmdline, struct CONSOLE *console, int *fat, unsigned int memorytotal);
 void cmd_mem(struct CONSOLE *console, unsigned int memorytotal);
 void cmd_cls(struct CONSOLE *console);
 void cmd_dir(struct CONSOLE *console);
 void cmd_type(struct CONSOLE *console, int *fat, char *cmdline);
-void app_hlt(struct CONSOLE *console, int *fat);
+int cmd_app(struct CONSOLE *console, int *fat, char *cmdline);
+void system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
 
 /* file.c */
 /*

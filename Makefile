@@ -62,17 +62,21 @@ bootpack.bim : $(OBJS_BOOTPACK) Makefile
 bootpack.hrb : bootpack.bim Makefile
 	$(BIM2HRB) target\bootpack.bim target\bootpack.hrb 0
 
-hlt.hrb : source\hlt.nas Makefile
-	$(NASK) source\hlt.nas target\hlt.hrb target\hlt.lst
+hello.hrb : source\hello.nas Makefile
+	$(NASK) source\hello.nas target\hello.hrb target\hello.lst
+
+hello2.hrb : source\hello2.nas Makefile
+	$(NASK) source\hello2.nas target\hello2.hrb target\hello2.lst
 
 haribote.sys : asmhead.bin bootpack.hrb Makefile
 	copy /B target\asmhead.bin+target\bootpack.hrb target\haribote.sys
 
-haribote.img : ipl10.bin haribote.sys hlt.hrb Makefile
+haribote.img : ipl10.bin haribote.sys hello.hrb hello2.hrb Makefile
 	$(EDIMG)   imgin:tolset/z_tools/fdimg0at.tek \
 		wbinimg src:target/ipl10.bin len:512 from:0 to:0 \
 		copy from:target/haribote.sys to:@: \
-		copy from:target/hlt.hrb to:@: \
+		copy from:target/hello.hrb to:@: \
+		copy from:target/hello2.hrb to:@: \
 		copy from:source/ipl10.nas to:@: \
 		copy from:make.bat to:@: \
 		imgout:target/haribote.img
@@ -107,7 +111,7 @@ clean :
 	-$(DEL) target\*.obj
 	-$(DEL) target\bootpack.map
 	-$(DEL) target\bootpack.bim
-	-$(DEL) target\bootpack.hrb
+	-$(DEL) target\*.hrb
 	-$(DEL) target\haribote.sys
 
 src_only :

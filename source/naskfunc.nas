@@ -18,9 +18,9 @@
         GLOBAL _asm_inthandler20, _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
         GLOBAL _memtest_sub
         GLOBAL _farjmp, _farcall
-        GLOBAL _asm_console_putchar
+        GLOBAL _asm_system_api
 	EXTERN _inthandler20, _inthandler21, _inthandler27, _inthandler2c
-        EXTERN _console_putchar
+        EXTERN _system_api
 
 [SECTION .text]             ; 目标文件中写了这些之后再写程序
 
@@ -147,7 +147,7 @@ _store_cr0:     ; void store_cr0(int cr0);
 _asm_inthandler20:
         PUSH	ES
         PUSH	DS
-        PUSHAD
+        PUSHAD                          ; 调用函数前,通用寄存器全部入栈
         MOV	EAX,ESP                 
         PUSH	EAX
         MOV	AX,SS                   ; 调用C语言函数前, SS,DS,ES设置成相同(C语言规范)
@@ -164,7 +164,7 @@ _asm_inthandler20:
 _asm_inthandler21:
         PUSH	ES
         PUSH	DS
-        PUSHAD
+        PUSHAD                          ; 调用函数前,通用寄存器全部入栈
         MOV	EAX,ESP                 
         PUSH	EAX
         MOV	AX,SS                   ; 调用C语言函数前, SS,DS,ES设置成相同(C语言规范)
@@ -181,7 +181,7 @@ _asm_inthandler21:
 _asm_inthandler27:
         PUSH	ES
         PUSH	DS
-        PUSHAD
+        PUSHAD                          ; 调用函数前,通用寄存器全部入栈
         MOV	EAX,ESP
         PUSH	EAX
         MOV	AX,SS
@@ -198,7 +198,7 @@ _asm_inthandler27:
 _asm_inthandler2c:
         PUSH	ES
         PUSH	DS
-        PUSHAD
+        PUSHAD                          ; 调用函数前,通用寄存器全部入栈
         MOV	EAX,ESP
         PUSH	EAX
         MOV	AX,SS
@@ -255,12 +255,14 @@ _farcall:       ; void farcall(int eip, int cs);
                 CALL    FAR [ESP+4]     ; far-CALL, 同时修改EIP和CS, 从而实现函数调用. CS段寄存器低3位无效, 因此需要*8.
                 RET                     ; 使用far-Call跨段调用其他段的函数(例如应用程序), 调用的函数返回时需要使用far-RET, 此处仅为普通RET
 
-; 自制系统API, 显示字符
-_asm_console_putchar:   ; void console_putchar(struct CONSOLE *console, int character, char move);
-                PUSH            1               ; move参数入栈: 显示字符后光标是否后移
-                AND             EAX,0xff        ; character参数, 只保留低8位, 高位全部置0
-                PUSH            EAX             ; character参数入栈: 要显示的字符
-                PUSH            DWORD [0x0fec]  ; 执行字符显示的控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 将自身地址放入0x0fec
-                CALL            _console_putchar; 调用C语言函数
-                ADD             ESP,12          ; 函数执行完毕后将刚才入栈的数据丢弃
-                RETF                            ; 应用使用far-Call跨段调用操作系统(段号2)API, 因此相应使用far-RET回应
+; 系统API中断函数, 由INT 0x40触发, 根据ebx值调用系统函数
+_asm_system_api:                ; void system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
+                STI                             ; 中断触发后CPU会自动禁止中断, 此处开启中断
+                PUSHAD                          ; 调用函数前,通用寄存器全部入栈(入栈顺序EDI,ESI,EBP,ESP,EBX,EDX,ECX,EAX)
+
+                PUSHAD                          ; 函数所需的参数入栈
+                CALL            _system_api     ; 调用C语言函数system_api, 根据ebx值来判断调用哪个函数
+                ADD             ESP,32          ; 函数执行完毕后将刚才入栈的数据丢弃
+
+                POPAD                           ; 还原通用寄存器
+                IRETD                           ; 使用IDT中断触发操作系统(段号2)的_asm_console_putchar函数, 因此操作系统上要相应使用IRETD回应

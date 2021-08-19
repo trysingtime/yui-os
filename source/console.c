@@ -200,6 +200,32 @@ void console_newline(struct CONSOLE *console) {
 }
 
 /*
+    打印字符串(以0结尾)
+    - console: 控制台
+    - str: 要打印的字符串, 以0结尾
+*/
+void console_putstr0(struct CONSOLE *console, char *str) {
+    for (; *str != 0; str++) {
+        console_putchar(console, *str, 1);
+    }
+    return;
+}
+
+/*
+    打印字符串(指定长度)
+    - console: 控制台
+    - str: 要打印的字符串
+    - lenth: 要打印的字符串长度
+*/
+void console_putstr1(struct CONSOLE *console, char *str, int length) {
+    int i;
+    for (i = 0; i < length; i++) {
+        console_putchar(console, str[i], 1);
+    }
+    return;
+}
+
+/*
     执行控制台输入的指令
     - cmdline: 输入到控制台的指令
     - console: 执行指令的控制台
@@ -219,17 +245,19 @@ void console_runcmd(char *cmdline, struct CONSOLE *console, int *fat, unsigned i
     } else if (strncmp(cmdline, "type ", 5) == 0) {
         /* type指令 */
         cmd_type(console, fat, cmdline);
-    } else if (strcmp(cmdline, "hlt") == 0) {
-        /* 运行指定程序hlt */
-        app_hlt(console, fat);
-    } else if (cmdline[0] != 0) {
-        /* 错误指令 */
-        // 显示错误提示
-        putfonts8_asc_layer(console->layer, 8, console->cursor_y, COL8_FFFFFF, COL8_000000, "Bad command", 12);
-        // 显示两空白行
-        console_newline(console);
-        console_newline(console);
+    }  else if (cmdline[0] != 0) {
+        /* app指令 */
+        int r = cmd_app(console, fat, cmdline);
+        if (r == 0) {
+            /* 错误指令 */
+            // 显示错误提示
+            putfonts8_asc_layer(console->layer, 8, console->cursor_y, COL8_FFFFFF, COL8_000000, "Bad command", 12);
+            // 显示两空白行
+            console_newline(console);
+            console_newline(console);
+        }
     }
+    return;
 }
 
 /*
@@ -241,15 +269,9 @@ void cmd_mem(struct CONSOLE *console, unsigned int memorytotal) {
     // 内存控制器
     struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR;
     // 绘制内存信息
-    char s[30];
-    sprintf(s, "total   %dMB", memorytotal / (1024 * 1024));
-    putfonts8_asc_layer(console->layer, 8, console->cursor_y, COL8_FFFFFF, COL8_000000, s, 30);
-    console_newline(console);
-
-    sprintf(s, "free    %dKB", free_memory_total(mng) / 1024);
-    putfonts8_asc_layer(console->layer, 8, console->cursor_y, COL8_FFFFFF, COL8_000000, s, 30);
-    console_newline(console);
-    console_newline(console);
+    char s[60];
+    sprintf(s, "total   %dMB\nfree    %dKB\n\n", memorytotal / (1024 * 1024), free_memory_total(mng) / 1024);
+    console_putstr0(console, s);
     return;
 }
 
@@ -296,7 +318,7 @@ void cmd_dir(struct CONSOLE *console) {
             // 非目录且非"非文件信息"
             // 打印文件大小
             char s[30];
-            sprintf(s, "filename.ext    %7d", fileinfo[x].size);
+            sprintf(s, "filename.ext    %7d\n", fileinfo[x].size);
             // 文件名
             for (y = 0; y < 8; y++) {
                 s[y] = fileinfo[x].name[y];
@@ -306,8 +328,7 @@ void cmd_dir(struct CONSOLE *console) {
             s[10] = fileinfo[x].ext[1];
             s[11] = fileinfo[x].ext[2];
             // 绘制
-            putfonts8_asc_layer(console->layer, 8 ,console->cursor_y, COL8_FFFFFF, COL8_000000, s, 30);
-            console_newline(console);
+            console_putstr0(console, s);
         }
     }
     console_newline(console);
@@ -330,17 +351,13 @@ void cmd_type(struct CONSOLE *console, int *fat, char *cmdline) {
         struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
         char *p = (char *) memory_alloc_4k(mng, fileinfo->size);
         fiel_loadfile(fileinfo->clustno, fileinfo->size, p, fat, (char *) (ADR_DISKIMG + 0x003e00));
-        // 打印文件内容(逐字输出)
-        int i;
-        for (i = 0; i < fileinfo->size; i++) {
-            console_putchar(console, p[i], 1);
-        }
+        // 打印文件内容
+        console_putstr1(console, p, fileinfo->size);
         // 释放内存
         memory_free_4k(mng, (int) p, fileinfo->size);
     } else {
         /* 没有找到文件的情况 */
-        putfonts8_asc_layer(console->layer, 8, console->cursor_y, COL8_FFFFFF, COL8_000000, "File not found.", 15);
-        console_newline(console);
+        console_putstr0(console, "File not found.\n");
     }
     console_newline(console);
     return;
@@ -348,18 +365,40 @@ void cmd_type(struct CONSOLE *console, int *fat, char *cmdline) {
 
 /*
     运行hlt应用
+    操作系统执行app:      操作系统将app注册到GDT, 例如段号1003, 然后通过far-Call执行app, app通过far-RET返回
+    app调用操作系统API:   操作系统将API注册到IDT, 例如中断号0x40, app通过INT调用API, 操作系统通过IRETD返回
     - console: 运行应用的控制台
     - fat: 解压缩后的FAT信息地址
 */
-void app_hlt(struct CONSOLE *console, int *fat) {
-    // 根据文件名查找文件
-    struct FILEINFO *fileinfo = file_search("HLT.HRB", (struct FILEINFO *) (ADR_DISKIMG + 0x002600), 224);
+int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
+    // 根据输入的指令获取文件名
+    char filename[18];
+    int i;
+    for (i = 0; i < 13; i++) {
+        if (cmdline[i] <= ' ') {
+            break;
+        }
+        filename[i] = cmdline[i];
+    }
+    filename[i] = 0;
+    // 根据文件名(不区分大小写)查找文件
+    struct FILEINFO *fileinfo = file_search(filename, (struct FILEINFO *) (ADR_DISKIMG + 0x002600), 224);
+    // 没有找到文件, 自动添加后缀.hrb, 重新寻找
+    if (fileinfo == 0 && filename[i - 1] != '.') {
+        filename[i] = '.';
+        filename[i + 1] = 'H';
+        filename[i + 2] = 'R';
+        filename[i + 3] = 'B';
+        filename[i + 4] = 0;
+        fileinfo = file_search(filename, (struct FILEINFO *) (ADR_DISKIMG + 0x002600), 224);
+    }
     // 根据文件是否找到,分情况处理
     if (fileinfo != 0) {
         /* 找到文件的情况 */
         // 读取文件内容到*p地址, 使用完后需要释放掉
         struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
         char *p = (char *) memory_alloc_4k(mng, fileinfo->size);
+        *((int *) 0xfe8) = (int) p; // API: 将app文件内存地址放入0x0fe8中, app可以通过0x0fe8获取自身起始地址, 进而调用系统API
         fiel_loadfile(fileinfo->clustno, fileinfo->size, p, fat, (char *) (ADR_DISKIMG + 0x003e00));
         // 将hlt.hrb注册到GDT, 段号1003(段号1~2由dsctbl.c使用, 段号3~1002由multitask.c使用)
         struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADR_GDT; // GDT地址
@@ -368,11 +407,35 @@ void app_hlt(struct CONSOLE *console, int *fat) {
         farcall(0, 1003 * 8);
         // 释放内存
         memory_free_4k(mng, (int) p, fileinfo->size);
-    } else {
-        /* 没有找到文件的情况 */
-        putfonts8_asc_layer(console->layer, 8, console->cursor_y, COL8_FFFFFF, COL8_000000, "File not found.", 15);
+
         console_newline(console);
+        return 1;
     }
-    console_newline(console);
-    return;  
+    /* 没有找到文件的情况 */
+    return 0;  
+}
+
+/*
+    系统API, 中断INT 0x40触发asm_system_api, asm_system_api组织参数并调用此函数, 根据ebx值调用系统函数
+    - edx: 根据此值来判断调用哪个函数
+*/
+void system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax) {
+    // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
+    struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
+    // app文件内存地址, 此处从0x0fe8获取, 系统运行app时, 已将app文件地址放入0x0fe8
+    int cs_base = *((int *) 0xfe8);
+    /* 
+        根据edx的值来判断调用哪个函数
+        1: 显示单个字符
+        2: 显示字符串(以0结尾)
+        3: 显示字符串(指定长度)
+    */
+    if (edx == 1) {
+        console_putchar(console, eax & 0xff, 1); // eax存放character参数, (eax & 0xff)只保留低8位, 高位全部置0
+    } else if (edx == 2) {
+        console_putstr0(console, (char *) ebx + cs_base); // ebx传入的是地址, 该地址值是app所在段的地址, 此时需要加上cs_base得到当前段地址
+    } else if (edx == 3) {
+        console_putstr1(console, (char *) ebx + cs_base, ecx); // ebx传入的是地址, 该地址值是app所在段的地址, 此时需要加上cs_base得到当前段地址
+    }
+    return;
 }

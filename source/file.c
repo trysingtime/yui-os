@@ -64,7 +64,7 @@ void fiel_loadfile(int clustno, int size, char *buf, int *fat, char *img) {
 
 /*
     根据文件全名查找磁盘文件信息中的文件
-    - filefullname: 文件全名(文件名+'.'+文件后缀)
+    - filefullname: 文件全名(文件名+'.'+文件后缀), 不区分大小写
     - fileinfo: 磁盘文件信息地址(0x2600~0x4200)
     - max: 磁盘文件信息数量(0x2600~0x4200只能有224个文件信息(32字节))
 */

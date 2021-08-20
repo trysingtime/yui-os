@@ -403,7 +403,25 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
         // 将hlt.hrb注册到GDT, 段号1003(段号1~2由dsctbl.c使用, 段号3~1002由multitask.c使用)
         struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADR_GDT; // GDT地址
         set_segmdesc(gdt + 1003, fileinfo->size - 1, (int) p, AR_CODE32_ER);
-        // 使用far-Call跨段调用应用函数(段号1003), 因此应用函数上要相应使用far-RET回应
+        // 调用C语言编写的app
+        if (fileinfo->size >= 8 && strncmp(p + 4, "Hari", 4) == 0) {
+            /*
+                修改读取到的C语言编写的app(.hrb)的二进制代码的开头6字节, 相当于以下代码:
+                [BITS 32]
+                    CALL    0x1b
+                    RETF
+                汇编语言编写的app只需要far-Call到指定段后按顺序执行即可, 之后app函数上要相应使用far-RET回应
+                C语言编写的app需要跳转到HariMain所在的地址再顺序执行(Call 0x1b), 并且后续使用了far-RET(RETF)返回, 因此app函数上无需far-RET
+            */
+            p[0] = 0xe8;
+            p[1] = 0x16;
+            p[2] = 0x00;
+            p[3] = 0x00;
+            p[4] = 0x00;
+            p[5] = 0xcb;
+        }
+
+        // 使用far-Call跨段调用app函数(段号1003), 因此app函数上要相应使用far-RET回应
         farcall(0, 1003 * 8);
         // 释放内存
         memory_free_4k(mng, (int) p, fileinfo->size);

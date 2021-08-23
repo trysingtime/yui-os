@@ -61,6 +61,10 @@ hello3.bim : hello3.obj a_nask.obj Makefile
 	$(OBJ2BIM) @$(RULEFILE) out:target\hello3.bim map:target\hello3.map target\hello3.obj target\a_nask.obj
 hello3.hrb : hello3.bim Makefile
 	$(BIM2HRB) target\hello3.bim target\hello3.hrb 0
+crack1.bim : crack1.obj a_nask.obj Makefile
+	$(OBJ2BIM) @$(RULEFILE) out:target\crack1.bim map:target\crack1.map target\crack1.obj target\a_nask.obj
+crack1.hrb : crack1.bim Makefile
+	$(BIM2HRB) target\crack1.bim target\crack1.hrb 0
 
 # 启动程序加载器
 ipl10.bin : source\ipl10.nas Makefile
@@ -95,7 +99,7 @@ haribote.sys : asmhead.bin bootpack.hrb Makefile
 	copy /B target\asmhead.bin+target\bootpack.hrb target\haribote.sys
 
 # 启动程序加载器+操作系统+应用程序
-haribote.img : ipl10.bin haribote.sys hello.hrb hello2.hrb a.hrb hello3.hrb Makefile
+haribote.img : ipl10.bin haribote.sys hello.hrb hello2.hrb a.hrb hello3.hrb crack1.hrb Makefile
 	$(EDIMG)   imgin:tolset/z_tools/fdimg0at.tek \
 		wbinimg src:target/ipl10.bin len:512 from:0 to:0 \
 		copy from:target/haribote.sys to:@: \
@@ -103,6 +107,7 @@ haribote.img : ipl10.bin haribote.sys hello.hrb hello2.hrb a.hrb hello3.hrb Make
 		copy from:target/hello2.hrb to:@: \
 		copy from:target/a.hrb to:@: \
 		copy from:target/hello3.hrb to:@: \
+		copy from:target/crack1.hrb to:@: \
 		copy from:source/ipl10.nas to:@: \
 		copy from:make.bat to:@: \
 		imgout:target/haribote.img

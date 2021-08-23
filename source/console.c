@@ -400,9 +400,6 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
         char *p = (char *) memory_alloc_4k(mng, fileinfo->size);
         *((int *) 0xfe8) = (int) p; // API: 将app文件内存地址放入0x0fe8中, app可以通过0x0fe8获取自身起始地址, 进而调用系统API
         fiel_loadfile(fileinfo->clustno, fileinfo->size, p, fat, (char *) (ADR_DISKIMG + 0x003e00));
-        // 将hlt.hrb注册到GDT, 段号1003(段号1~2由dsctbl.c使用, 段号3~1002由multitask.c使用)
-        struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADR_GDT; // GDT地址
-        set_segmdesc(gdt + 1003, fileinfo->size - 1, (int) p, AR_CODE32_ER);
         // 调用C语言编写的app
         if (fileinfo->size >= 8 && strncmp(p + 4, "Hari", 4) == 0) {
             /*
@@ -420,12 +417,18 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
             p[4] = 0x00;
             p[5] = 0xcb;
         }
-
-        // 使用far-Call跨段调用app函数(段号1003), 因此app函数上要相应使用far-RET回应
-        farcall(0, 1003 * 8);
+        // 将app代码段注册到GDT, 段号1003(段号1~2由dsctbl.c使用, 段号3~1002由multitask.c使用)
+        struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADR_GDT; // GDT地址
+        set_segmdesc(gdt + 1003, fileinfo->size - 1, (int) p, AR_CODE32_ER);
+        // 将app数据段注册到GDT, 段号1004, 大小64KB
+        char *q = (char *) memory_alloc_4k(mng, 64 * 1024);
+        set_segmdesc(gdt + 1004, 64 * 1024 - 1, (int) q, AR_DATA32_RW);
+        // 使用far-Call跨段调用app函数(代码段号1003, 数据段号1004, 栈大小64KB), 因此app函数上要相应使用far-RET回应
+        start_app(0, 1003 * 8, 64 * 1024, 1004 * 8);
         // 释放内存
         memory_free_4k(mng, (int) p, fileinfo->size);
-
+        memory_free_4k(mng, (int) q, 64 * 1024);
+        
         console_newline(console);
         return 1;
     }
@@ -456,4 +459,16 @@ void system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         console_putstr1(console, (char *) ebx + cs_base, ecx); // ebx传入的是地址, 该地址值是app所在段的地址, 此时需要加上cs_base得到当前段地址
     }
     return;
+}
+
+/*
+    异常中断处理函数
+    - 在x86架构规范中, 当应用程序试图破坏操作系统或者违背操作系统设置时自动产生0x0d中断
+    - 此处仅打印信息, 返回值设置为非0, 让asm_inthandler0d()结束应用程序
+*/
+int inthandler0d(int *esp) {
+    // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
+    struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
+    console_putstr0(console, "\nINT 0D :\n General Protected Exception.\n");
+    return 1; 
 }

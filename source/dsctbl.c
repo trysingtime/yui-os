@@ -58,7 +58,9 @@ void init_gdtidt(void) {
     }
     // 将IDT的中断个数(段个数*每段8字节, 此处256中断)和起始地址保存到IDTR寄存器
     load_idtr(LIMIT_IDT, ADR_IDT);
-    // 设置中断, 调用asm_inthandler函数, 段号为2
+    // 注册异常中断(在x86架构规范中, 当应用程序试图破坏操作系统或者违背操作系统设置时自动产生0x0d中断)
+    set_gatedesc(idt + 0x0d, (int) asm_inthandler0d, 2 * 8, AR_INTGATE32);
+    // 注册中断, 调用asm_inthandler函数, 段号为2
     set_gatedesc(idt + 0x20, (int) asm_inthandler20, 2 * 8, AR_INTGATE32); // 注册定时器中断
     set_gatedesc(idt + 0x21, (int) asm_inthandler21, 2 * 8, AR_INTGATE32); // 注册键盘中断
     set_gatedesc(idt + 0x27, (int) asm_inthandler27, 2 * 8, AR_INTGATE32); // 注册电气噪声中断

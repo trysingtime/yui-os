@@ -40,6 +40,8 @@ void load_tr(int tr);
 int load_cr0(void);
 /* CR0寄存器(32位)存储值 */
 void store_cr0(int cr0);
+/* 异常中断处理函数(在x86架构规范中, 当应用程序试图破坏操作系统或者违背操作系统设置时自动产生0x0d中断) */
+void asm_inthandler0d(void);
 /* 定时器中断处理函数 */
 void asm_inthandler20(void);
 /* 键盘中断处理函数 */
@@ -60,6 +62,13 @@ void farjmp(int eip, int cs);
     - cs:eip: 目的函数地址, CS段寄存器低3位无效, 需要*8
 */
 void farcall(int eip, int cs);
+/*
+    启动app
+    在far-Call前设定ESP(值为栈顶,即app数据段大小)和段寄存器(ES/SS/DS/FS/GS)
+    - cs:eip: app代码地址
+    - ds:esp: app数据地址(栈地址)
+*/
+void start_app(int eip, int cs, int esp, int ds);
 /* 系统API中断函数, 由INT 0x40触发, 根据ebx值调用系统函数 */
 void asm_system_api(void);
 
@@ -400,6 +409,7 @@ void cmd_dir(struct CONSOLE *console);
 void cmd_type(struct CONSOLE *console, int *fat, char *cmdline);
 int cmd_app(struct CONSOLE *console, int *fat, char *cmdline);
 void system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
+int inthandler0d(int *esp);
 
 /* file.c */
 /*

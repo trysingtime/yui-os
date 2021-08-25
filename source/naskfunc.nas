@@ -148,11 +148,6 @@ _asm_inthandler20:
         PUSH	ES
         PUSH	DS
         PUSHAD                          ; 调用函数前,通用寄存器全部入栈
-; 区分操作系统活动时的中断还是app活动时的中断
-        MOV     AX,SS
-        CMP     AX,1*8                  
-        JNE     .from_app
-; 操作系统活动时的中断
         MOV	EAX,ESP                 
         PUSH	EAX
         MOV	AX,SS                   ; 调用C语言函数前, SS,DS,ES设置成相同(C语言规范)
@@ -164,37 +159,12 @@ _asm_inthandler20:
         POP	DS
         POP	ES
         IRETD                           ; 使用IDT中断触发操作系统(段号2)的_asm_console_putchar函数, 因此操作系统上要相应使用IRETD回应
-; app活动时的中断
-.from_app:                              ; 本地标签, 类似本地变量, 可以与其他函数中的标签重复
-        MOV     EAX,1*8
-        MOV     DS,AX                   ; 设定ds, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ECX,[0xfe4]             ; 设定ESP(此处使用ECX缓存), 获取操作系统栈地址(系统启动app前将栈地址保存在0xfe4中)
-        ADD     ECX,-8                  
-        MOV     [ECX+4],SS              ; 调用函数前, 保存app的SS, 函数返回后还原
-        MOV     [ECX],ESP               ; 调用函数前, 保存app的ESP, 函数返回后还原
-        MOV     SS,AX                   ; 设定ss, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ES,AX                   ; 设定es, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ESP,ECX                 ; 设定esp, 将ECX缓存的栈数据放入ESP
-        CALL    _inthandler20
-        POP     ECX                     ; 弹出当前ESP的值且ESP+4, 也即aap的ESP
-        POP     EAX                     ; 弹出当前ESP的值且ESP+4, 也即app的SS
-        MOV     SS,AX
-        MOV     ESP,ECX
-        POPAD
-        POP     DS
-        POP     ES
-        IRETD                           ; 使用IDT中断触发操作系统(段号2)的_asm_console_putchar函数, 因此操作系统上要相应使用IRETD回应
 
 ; 调用C语言inthandler21方法(来自PS/2键盘的中断)
 _asm_inthandler21:
         PUSH	ES
         PUSH	DS
         PUSHAD                          ; 调用函数前,通用寄存器全部入栈
-; 区分操作系统活动时的中断还是app活动时的中断
-        MOV     AX,SS
-        CMP     AX,1*8                  
-        JNE     .from_app
-; 操作系统活动时的中断
         MOV	EAX,ESP                 
         PUSH	EAX
         MOV	AX,SS                   ; 调用C语言函数前, SS,DS,ES设置成相同(C语言规范)
@@ -206,37 +176,12 @@ _asm_inthandler21:
         POP	DS
         POP	ES
         IRETD
-; app活动时的中断
-.from_app:                              ; 本地标签, 类似本地变量, 可以与其他函数中的标签重复
-        MOV     EAX,1*8
-        MOV     DS,AX                   ; 设定ds, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ECX,[0xfe4]             ; 设定ESP(此处使用ECX缓存), 获取操作系统栈地址(系统启动app前将栈地址保存在0xfe4中)
-        ADD     ECX,-8                  
-        MOV     [ECX+4],SS              ; 调用函数前, 保存app的SS, 函数返回后还原
-        MOV     [ECX],ESP               ; 调用函数前, 保存app的ESP, 函数返回后还原
-        MOV     SS,AX                   ; 设定ss, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ES,AX                   ; 设定es, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ESP,ECX                 ; 设定esp, 将ECX缓存的栈数据放入ESP
-        CALL    _inthandler21
-        POP     ECX                     ; 弹出当前ESP的值且ESP+4, 也即aap的ESP
-        POP     EAX                     ; 弹出当前ESP的值且ESP+4, 也即app的SS
-        MOV     SS,AX
-        MOV     ESP,ECX
-        POPAD
-        POP     DS
-        POP     ES
-        IRETD                           ; 使用IDT中断触发操作系统(段号2)的_asm_console_putchar函数, 因此操作系统上要相应使用IRETD回应
 
 ; 调用C语言inthandler27方法(电气噪声中断)
 _asm_inthandler27:
         PUSH	ES
         PUSH	DS
         PUSHAD                          ; 调用函数前,通用寄存器全部入栈
-; 区分操作系统活动时的中断还是app活动时的中断
-        MOV     AX,SS
-        CMP     AX,1*8                  
-        JNE     .from_app
-; 操作系统活动时的中断        
         MOV	EAX,ESP
         PUSH	EAX
         MOV	AX,SS
@@ -248,37 +193,12 @@ _asm_inthandler27:
         POP	DS
         POP	ES
         IRETD
-; app活动时的中断
-.from_app:                              ; 本地标签, 类似本地变量, 可以与其他函数中的标签重复
-        MOV     EAX,1*8
-        MOV     DS,AX                   ; 设定ds, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ECX,[0xfe4]             ; 设定ESP(此处使用ECX缓存), 获取操作系统栈地址(系统启动app前将栈地址保存在0xfe4中)
-        ADD     ECX,-8                  
-        MOV     [ECX+4],SS              ; 调用函数前, 保存app的SS, 函数返回后还原
-        MOV     [ECX],ESP               ; 调用函数前, 保存app的ESP, 函数返回后还原
-        MOV     SS,AX                   ; 设定ss, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ES,AX                   ; 设定es, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ESP,ECX                 ; 设定esp, 将ECX缓存的栈数据放入ESP
-        CALL    _inthandler27
-        POP     ECX                     ; 弹出当前ESP的值且ESP+4, 也即aap的ESP
-        POP     EAX                     ; 弹出当前ESP的值且ESP+4, 也即app的SS
-        MOV     SS,AX
-        MOV     ESP,ECX
-        POPAD
-        POP     DS
-        POP     ES
-        IRETD                           ; 使用IDT中断触发操作系统(段号2)的_asm_console_putchar函数, 因此操作系统上要相应使用IRETD回应
 
 ; 调用C语言inthandler2c方法(来自PS/2鼠标的中断)
 _asm_inthandler2c:
         PUSH	ES
         PUSH	DS
         PUSHAD                          ; 调用函数前,通用寄存器全部入栈
-; 区分操作系统活动时的中断还是app活动时的中断
-        MOV     AX,SS
-        CMP     AX,1*8                  
-        JNE     .from_app
-; 操作系统活动时的中断        
         MOV	EAX,ESP
         PUSH	EAX
         MOV	AX,SS
@@ -290,26 +210,6 @@ _asm_inthandler2c:
         POP	DS
         POP	ES
         IRETD
-; app活动时的中断
-.from_app:                              ; 本地标签, 类似本地变量, 可以与其他函数中的标签重复
-        MOV     EAX,1*8
-        MOV     DS,AX                   ; 设定ds, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ECX,[0xfe4]             ; 设定ESP(此处使用ECX缓存), 获取操作系统栈地址(系统启动app前将栈地址保存在0xfe4中)
-        ADD     ECX,-8                  
-        MOV     [ECX+4],SS              ; 调用函数前, 保存app的SS, 函数返回后还原
-        MOV     [ECX],ESP               ; 调用函数前, 保存app的ESP, 函数返回后还原
-        MOV     SS,AX                   ; 设定ss, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ES,AX                   ; 设定es, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ESP,ECX                 ; 设定esp, 将ECX缓存的栈数据放入ESP
-        CALL    _inthandler2c
-        POP     ECX                     ; 弹出当前ESP的值且ESP+4, 也即aap的ESP
-        POP     EAX                     ; 弹出当前ESP的值且ESP+4, 也即app的SS
-        MOV     SS,AX
-        MOV     ESP,ECX
-        POPAD
-        POP     DS
-        POP     ES
-        IRETD                           ; 使用IDT中断触发操作系统(段号2)的_asm_console_putchar函数, 因此操作系统上要相应使用IRETD回应
 
 ; 调用C语言inthandler0d方法(异常中断), 在x86架构规范中, 当应用程序试图破坏操作系统或者违背操作系统设置时自动产生0x0d中断
 _asm_inthandler0d:
@@ -317,61 +217,21 @@ _asm_inthandler0d:
         PUSH	ES
         PUSH	DS
         PUSHAD                          ; 调用函数前,通用寄存器全部入栈
-; 区分操作系统活动时的中断还是app活动时的中断
-        MOV     AX,SS
-        CMP     AX,1*8                  
-        JNE     .from_app
-; 操作系统活动时的中断
         MOV	EAX,ESP                 
         PUSH	EAX
         MOV	AX,SS                   ; 调用C语言函数前, SS,DS,ES设置成相同(C语言规范)
         MOV	DS,AX                   
         MOV	ES,AX
         CALL	_inthandler0d
+        CMP     EAX,0
+        JNE     end_app                 ; 函数返回值不为0, 则结束app, 此时EAX中保存着tss.esp0的地址        
         POP	EAX
         POPAD
         POP	DS
         POP	ES
         ADD     ESP,4                   ; INT 0x0d中需要这句
         IRETD                           ; 使用IDT中断触发操作系统(段号2)的_asm_console_putchar函数, 因此操作系统上要相应使用IRETD回应
-; app活动时的中断
-.from_app:                              ; 本地标签, 类似本地变量, 可以与其他函数中的标签重复
-        CLI
-        MOV     EAX,1*8
-        MOV     DS,AX                   ; 设定ds, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ECX,[0xfe4]             ; 设定ESP(此处使用ECX缓存), 获取操作系统栈地址(系统启动app前将栈地址保存在0xfe4中)
-        ADD     ECX,-8                  
-        MOV     [ECX+4],SS              ; 调用函数前, 保存app的SS, 函数返回后还原
-        MOV     [ECX],ESP               ; 调用函数前, 保存app的ESP, 函数返回后还原
-        MOV     SS,AX                   ; 设定ss, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ES,AX                   ; 设定es, 调用系统API前需将段寄存器设定为操作系统数据段1
-        MOV     ESP,ECX                 ; 设定esp, 将ECX缓存的栈数据放入ESP
-        STI
-        CALL    _inthandler0d
-        CLI
-        CMP     EAX,0                   ; 判断inthandler0d()返回值(默认为1), 若不为0则强制结束程序
-        JNE     .kill
-        POP     ECX                     ; 弹出当前ESP的值且ESP+4, 也即aap的ESP
-        POP     EAX                     ; 弹出当前ESP的值且ESP+4, 也即app的SS
-        MOV     SS,AX
-        MOV     ESP,ECX
-        POPAD
-        POP     DS
-        POP     ES
-        ADD     ESP,4                   ; INT 0x0d中需要这句
-        IRETD                           ; 使用IDT中断触发操作系统(段号2)的_asm_console_putchar函数, 因此操作系统上要相应使用IRETD回应
-; 强制结束程序
-.kill:
-        MOV     EAX,1*8                 ; 段寄存器设置为操作系统数据段
-        MOV     ES,AX
-        MOV     SS,AX
-        MOV     DS,AX
-        MOV     FS,AX
-        MOV     GS,AX
-        MOV     ESP,[0xfe4]             ; 栈恢复至start_app时的状态
-        STI
-        POPAD
-        RET                             ; 不使用IRETD
+
 
 ; 内存容量检查(参考C语言方法memtest_sub_c()说明)
 _memtest_sub:	; unsigned int memtest_sub(unsigned int start, unsigned int end)
@@ -419,86 +279,54 @@ _farcall:       ; void farcall(int eip, int cs);
                 RET                     ; 使用far-Call跨段调用其他段的函数(例如应用程序), 调用的函数返回时需要使用far-RET, 此处仅为普通RET
 
 
-; 启动app, 跳转app前设定ESP(值为栈顶,即app数据段大小)和段寄存器(ES/SS/DS/FS/GS), app代码地址cs:eip, app数据地址(栈地址)ds:esp
-_start_app:             ; void start_app(int eip, int cs, int esp, int ds);
+; 启动app, 跳转app前设定段寄存器(ES/SS/DS/FS/GS), app代码地址cs:eip, app数据地址(栈地址)ds:esp
+_start_app:             ; void start_app(int eip, int cs, int esp, int ds, int *tss_esp0);
                 PUSHAD                          ; 32位通用寄存器的值全部入栈(入栈顺序EDI,ESI,EBP,ESP,EBX,EDX,ECX,EAX)
                 MOV             EAX,[ESP+36]    ; 参数eip, 一般为0
                 MOV             ECX,[ESP+40]    ; 参数cs, 为app代码段段号
                 MOV             EDX,[ESP+44]    ; 参数esp, 此参数为栈大小, 也即栈顶
-                MOV             EBX,[ESP+48]    ; 参数ds, 为app数据段段号
-                MOV             [0xfe4],ESP     ; 缓存当前栈地址到0xfe4, app运行中会调用系统API需要用到, app返回后还原
-; 操作系统跨段调用app, , 在far-Call前设定ESP和段寄存器
-                CLI
+                MOV             EBX,[ESP+48]    ; 参数ds/ss, 为app数据段段号
+                MOV             EBP,[ESP+52]    ; 参数tss_esp0, 应用程序专用段需要在TSS中注册操作系统的段号和ESP(将操作系统的ESP和段号先后压入TSS栈esp0)
+                MOV             [EBP],ESP       ; 将操作系统的ESP压入TSS.esp0
+                MOV             [EBP+4],SS      ; 将操作系统的段号压入TSS.esp0
+; 操作系统跨段调用app前设定段寄存器(因为app注册了应用专用段, 因此无需手动设定和切换栈)
                 MOV             ES,BX
-                MOV             SS,BX
                 MOV             DS,BX
                 MOV             FS,BX
                 MOV             GS,BX
-                MOV             ESP,EDX         
-                STI
-; 运行app
+; 运行app, 应用程序专用段不允许操作系统far-CALL/far-JMP应用程序, 因此通过RETF(far-CALL的回应,本质是从栈中将地址POP,然后far-JMP)来实现
+                OR              ECX,3           ; 将app代码段号和3进行OR运算, 使用RETF调用app的小技巧
+                OR              EBX,3           ; 将app数据段号和3进行OR运算, 使用RETF调用app的小技巧
+                PUSH            EBX             ; 参数ds/ss, 为app数据段段号
+                PUSH            EDX             ; 参数esp, 此参数为栈大小, 也即栈顶
                 PUSH            ECX             ; 参数cs, 为app代码段段号
                 PUSH            EAX             ; 参数eip, 一般为0
-                CALL            FAR [ESP]       ; far调用函数, 目的地址为cs:eip, 同时修改EIP和CS, 从而实现函数调用. CS段寄存器低3位无效, 因此需要*8.
-; app返回后, 还原ESP和段寄存器
-                MOV             EAX, 1*8        ; 调用系统API前需将段寄存器设定为操作系统数据段1
-                CLI
-                MOV             ES,AX
-                MOV             SS,AX
-                MOV             DS,AX
-                MOV             FS,AX
-                MOV             GS,AX
-                MOV             ESP,[0xfe4]     ; 还原app运行前ESP
-                STI
-
-                POPAD                           ; 还原所有通用寄存器
-                RET
+                RETF                            ; 从栈中将地址POP,然后far-JMP(cs:eip, ss:esp),从而实现app调用
 
 
 ; 系统API中断函数, 由INT 0x40触发, 根据ebx值调用系统函数
-_asm_system_api:        ; void system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
-                ; 中断触发后CPU会自动禁止中断
-                PUSHAD                          ; 调用函数前,通用寄存器全部入栈(入栈顺序EDI,ESI,EBP,ESP,EBX,EDX,ECX,EAX)
-                PUSHAD                          ; 函数所需的参数入栈, 此时的栈是app的栈, 需要将这些入栈的参数转移到操作系统栈
-; app跨段调用操作系统, 在far-Call前设定段寄存器和ESP
-                MOV             EAX,1*8         ; 
-                MOV             DS,AX           ; 设定ds, 调用系统API前需将段寄存器设定为操作系统数据段1
-
-                MOV             ECX,[0xfe4]     ; 设定ESP(此处使用ECX缓存), 获取操作系统栈地址(系统启动app前将栈地址保存在0xfe4中)
-                ADD             ECX, -40        ; 操作系统栈地址压栈40字节, 用以保存需要调用系统API所需的各个参数
-                MOV             [ECX+32],ESP    ; 调用函数前, 保存app的ESP, 函数返回后还原
-                MOV             [ECX+36],SS     ; 调用函数前, 保存app的SS, 函数返回后还原
-; 函数所需的参数入栈, 此时的栈是app的栈, 需要将这些入栈的参数转移到操作系统栈
-                MOV             EDX,[ESP]
-                MOV             [ECX],EDX       ; edi
-                MOV             EDX,[ESP+4]
-                MOV             [ECX+4],EDX     ; esi
-                MOV             EDX,[ESP+8]
-                MOV             [ECX+8],EDX     ; ebp
-                MOV             EDX,[ESP+12]
-                MOV             [ECX+12],EDX    ; esp
-                MOV             EDX,[ESP+16]
-                MOV             [ECX+16],EDX    ; ebx
-                MOV             EDX,[ESP+20]
-                MOV             [ECX+20],EDX    ; eax
-                MOV             EDX,[ESP+24]
-                MOV             [ECX+24],EDX    ; ecx
-                MOV             EDX,[ESP+28]
-                MOV             [ECX+28],EDX    ; eax
-; app跨段调用操作系统, 在far-Call前设定段寄存器和ESP
-                MOV             ES,AX           ; 设定es, 调用系统API前需将段寄存器设定为操作系统数据段1
-                MOV             SS,AX           ; 设定ss, 调用系统API前需将段寄存器设定为操作系统数据段1
-                MOV             ESP,ECX         ; 设定esp, 将ECX缓存的栈数据放入ESP
-; 调用系统API
+_asm_system_api:        ; int system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
+; 中断触发后CPU会自动禁止中断
                 STI                             ; 中断触发后CPU会自动禁止中断, 此处开启中断
+                PUSH            DS
+                PUSH            ES
+                PUSHAD                          ; 调用函数前,通用寄存器全部入栈(入栈顺序EDI,ESI,EBP,ESP,EBX,EDX,ECX,EAX)
+; 调用系统API前设定段寄存器(因为app注册了应用专用段, 因此无需手动设定和切换栈)
+                PUSHAD                          ; 函数所需的参数入栈, 此时的栈是app的栈, 需要将这些入栈的参数转移到操作系统栈, 因注册了应用专用段, 无需手动设定和切换栈
+                MOV             AX,SS           ; 将操作系统段号存入段寄存器
+                MOV             DS,AX
+                MOV             ES,AX
                 CALL            _system_api     ; 调用C语言函数system_api, 根据ebx值来判断调用哪个函数
-; 函数返回后还原
-                MOV             ECX,[ESP+32]    ; 还原调用函数前保存的app的ESP
-                MOV             EAX,[ESP+36]    ; 还原调用函数前保存的app的SS
-                CLI
-                MOV             SS,AX
-                MOV             ESP,ECX
-
-                POPAD                           ; 函数执行完毕后将刚才入栈的数据丢弃
+                CMP             EAX,0
+                JNE             end_app         ; 函数返回值不为0, 则结束app, 此时EAX中保存着tss.esp0的地址
+                ADD             ESP,32          ; 丢弃之前入栈的参数
                 POPAD                           ; 还原通用寄存器
+                POP             ES
+                POP             DS
                 IRETD                           ; 使用IDT中断触发操作系统(段号2)的_asm_console_putchar函数, 因此操作系统上要相应使用IRETD回应
+
+; 结束app
+end_app:
+                MOV             ESP,[EAX]       ; tss.esp0的地址, 该地址在start_app()时将操作系统的ESP和段号入栈, 此时还原(ss:esp), 使指令回到cmd_app(), 从而结束app
+                POPAD
+                RET                             ; 因start_app()是通过RETF调用app的, 此处RET将直接返回cmd_app()

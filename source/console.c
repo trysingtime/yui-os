@@ -417,14 +417,24 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
             p[4] = 0x00;
             p[5] = 0xcb;
         }
-        // 将app代码段注册到GDT, 段号1003(段号1~2由dsctbl.c使用, 段号3~1002由multitask.c使用)
+        /* 
+            应用程序专用段(段属性加上0x60)
+            - 应用程序专用段需要在TSS中注册操作系统的段号和ESP(将操作系统的ESP和段号先后压入TSS栈esp0)
+            - 应用程序专用段将会限制app使用IN/OUT/HLT/CLI/STI/CALL等一系列操作, 也无法修改段寄存器为操作系统的段号
+            - 应用程序专用段不允许操作系统far-CALL/far-JMP应用程序, 因此通过RETF(far-CALL的回应,本质是从栈中将地址POP,然后far-JMP)来实现
+            - 应用程序专用段允许应用程序far-CALL/far-JMP操作系统
+        */
+        // 将app代码段注册到GDT, 段号1003(段号1~2由dsctbl.c使用, 段号3~1002由multitask.c使用), 段属性加上0x60, 将段设置成应用程序专用段
         struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADR_GDT; // GDT地址
-        set_segmdesc(gdt + 1003, fileinfo->size - 1, (int) p, AR_CODE32_ER);
-        // 将app数据段注册到GDT, 段号1004, 大小64KB
+        set_segmdesc(gdt + 1003, fileinfo->size - 1, (int) p, AR_CODE32_ER + 0x60);
+        // 将app数据段注册到GDT, 段号1004, 大小64KB, 段属性加上0x60, 将段设置成应用程序专用段
         char *q = (char *) memory_alloc_4k(mng, 64 * 1024);
-        set_segmdesc(gdt + 1004, 64 * 1024 - 1, (int) q, AR_DATA32_RW);
+        set_segmdesc(gdt + 1004, 64 * 1024 - 1, (int) q, AR_DATA32_RW + 0x60);
+        // 在TSS中注册操作系统的段号和ESP(将操作系统的ESP和段号先后压入TSS栈esp0)
+        struct TASK *task = task_current();
         // 使用far-Call跨段调用app函数(代码段号1003, 数据段号1004, 栈大小64KB), 因此app函数上要相应使用far-RET回应
-        start_app(0, 1003 * 8, 64 * 1024, 1004 * 8);
+        // 新版本使用了RETF来调用app函数, app不能再使用far-RET回应, 而是直接调用end_app结束程序直接返回到此处
+        start_app(0, 1003 * 8, 64 * 1024, 1004 * 8, &(task->tss.esp0));
         // 释放内存
         memory_free_4k(mng, (int) p, fileinfo->size);
         memory_free_4k(mng, (int) q, 64 * 1024);
@@ -440,7 +450,7 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
     系统API, 中断INT 0x40触发asm_system_api, asm_system_api组织参数并调用此函数, 根据ebx值调用系统函数
     - edx: 根据此值来判断调用哪个函数
 */
-void system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax) {
+int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax) {
     // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
     struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
     // app文件内存地址, 此处从0x0fe8获取, 系统运行app时, 已将app文件地址放入0x0fe8
@@ -450,6 +460,7 @@ void system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         1: 显示单个字符
         2: 显示字符串(以0结尾)
         3: 显示字符串(指定长度)
+        4: 结束app
     */
     if (edx == 1) {
         console_putchar(console, eax & 0xff, 1); // eax存放character参数, (eax & 0xff)只保留低8位, 高位全部置0
@@ -457,8 +468,11 @@ void system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         console_putstr0(console, (char *) ebx + cs_base); // ebx传入的是地址, 该地址值是app所在段的地址, 此时需要加上cs_base得到当前段地址
     } else if (edx == 3) {
         console_putstr1(console, (char *) ebx + cs_base, ecx); // ebx传入的是地址, 该地址值是app所在段的地址, 此时需要加上cs_base得到当前段地址
+    } else if (edx == 4) {
+        struct TASK *task = task_current();
+        return &(task->tss.esp0); // tss.esp0地址在start_app()时将操作系统的ESP和段号入栈, 此时还原, 使指令回到cmd_app(), 从而结束app
     }
-    return;
+    return 0;
 }
 
 /*
@@ -466,9 +480,10 @@ void system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
     - 在x86架构规范中, 当应用程序试图破坏操作系统或者违背操作系统设置时自动产生0x0d中断
     - 此处仅打印信息, 返回值设置为非0, 让asm_inthandler0d()结束应用程序
 */
-int inthandler0d(int *esp) {
+int *inthandler0d(int *esp) {
     // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
     struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
     console_putstr0(console, "\nINT 0D :\n General Protected Exception.\n");
-    return 1; 
+    struct TASK *task = task_current();
+    return &(task->tss.esp0); // tss.esp0地址在start_app()时将操作系统的ESP和段号入栈, 此时还原, 使指令回到cmd_app(), 从而结束app
 }

@@ -67,10 +67,11 @@ void farcall(int eip, int cs);
     在far-Call前设定ESP(值为栈顶,即app数据段大小)和段寄存器(ES/SS/DS/FS/GS)
     - cs:eip: app代码地址
     - ds:esp: app数据地址(栈地址)
+    - tss_esp0: 应用程序专用段需要在TSS中注册操作系统的段号和ESP(将操作系统的ESP和段号先后压入TSS栈esp0)
 */
-void start_app(int eip, int cs, int esp, int ds);
+void start_app(int eip, int cs, int esp, int ds, int *tss_esp0);
 /* 系统API中断函数, 由INT 0x40触发, 根据ebx值调用系统函数 */
-void asm_system_api(void);
+int asm_system_api(void);
 
 /* fifo.c */
 
@@ -408,8 +409,8 @@ void cmd_cls(struct CONSOLE *console);
 void cmd_dir(struct CONSOLE *console);
 void cmd_type(struct CONSOLE *console, int *fat, char *cmdline);
 int cmd_app(struct CONSOLE *console, int *fat, char *cmdline);
-void system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
-int inthandler0d(int *esp);
+int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
+int *inthandler0d(int *esp);
 
 /* file.c */
 /*

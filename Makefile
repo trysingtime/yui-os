@@ -36,35 +36,32 @@ COPY     = copy
 DEL      = del
 
 # 单元规则
-default : 
+default :             
 	$(MAKE) img
 
 # 应用程序
+app : a.hrb hello.hrb hello2.hrb hello3.hrb crack1.hrb crack2.hrb crack3.hrb crack4.hrb crack5.hrb
 ## 汇编语言
-hello.hrb : source\hello.nas Makefile
-	$(NASK) source\hello.nas target\hello.hrb target\hello.lst
-hello2.hrb : source\hello2.nas Makefile
-	$(NASK) source\hello2.nas target\hello2.hrb target\hello2.lst
+%.hrb : app\%.nas Makefile
+	$(NASK) $< target\$@ target\$*.lst
+%.hrb : crack\%.nas Makefile
+	$(NASK) $< target\$@ target\$*.lst
 
 ## 汇编语言API
 a_nask.obj : source\a_nask.nas Makefile
 	$(NASK) source\a_nask.nas target\a_nask.obj target\a_nask.lst
 
 ## C语言(通过通配符c->gas->nas->obj)
+%.gas : app\%.c Makefile
+	$(CC1) -o target\$@ $<
+%.gas : crack\%.c Makefile
+	$(CC1) -o target\$@ $<
 
 ## 汇编语言API+C语言
-a.bim : a.obj a_nask.obj Makefile
-	$(OBJ2BIM) @$(RULEFILE) out:target\a.bim map:target\a.map target\a.obj target\a_nask.obj
-a.hrb : a.bim Makefile
-	$(BIM2HRB) target\a.bim target\a.hrb 0
-hello3.bim : hello3.obj a_nask.obj Makefile
-	$(OBJ2BIM) @$(RULEFILE) out:target\hello3.bim map:target\hello3.map target\hello3.obj target\a_nask.obj
-hello3.hrb : hello3.bim Makefile
-	$(BIM2HRB) target\hello3.bim target\hello3.hrb 0
-crack1.bim : crack1.obj a_nask.obj Makefile
-	$(OBJ2BIM) @$(RULEFILE) out:target\crack1.bim map:target\crack1.map target\crack1.obj target\a_nask.obj
-crack1.hrb : crack1.bim Makefile
-	$(BIM2HRB) target\crack1.bim target\crack1.hrb 0
+%.bim : %.obj a_nask.obj Makefile
+	$(OBJ2BIM) @$(RULEFILE) out:target\$*.bim map:target\$*.map target\$*.obj target\a_nask.obj
+%.hrb : %.bim Makefile
+	$(BIM2HRB) target\$*.bim target\$*.hrb 0
 
 # 启动程序加载器
 ipl10.bin : source\ipl10.nas Makefile
@@ -86,6 +83,8 @@ naskfunc.obj : source\naskfunc.nas Makefile
 	$(NASK) source\naskfunc.nas target\naskfunc.obj target\naskfunc.lst
 
 ## C语言(通过通配符c->gas->nas->obj)
+%.gas : source\%.c Makefile
+	$(CC1) -o target\$@ $<
 
 ## TXT文件+汇编语言+C语言
 bootpack.bim : $(OBJS_BOOTPACK) Makefile
@@ -99,26 +98,28 @@ haribote.sys : asmhead.bin bootpack.hrb Makefile
 	copy /B target\asmhead.bin+target\bootpack.hrb target\haribote.sys
 
 # 启动程序加载器+操作系统+应用程序
-haribote.img : ipl10.bin haribote.sys hello.hrb hello2.hrb a.hrb hello3.hrb crack1.hrb Makefile
+haribote.img : ipl10.bin haribote.sys app Makefile
 	$(EDIMG)   imgin:tolset/z_tools/fdimg0at.tek \
 		wbinimg src:target/ipl10.bin len:512 from:0 to:0 \
 		copy from:target/haribote.sys to:@: \
+		copy from:target/a.hrb to:@: \
 		copy from:target/hello.hrb to:@: \
 		copy from:target/hello2.hrb to:@: \
-		copy from:target/a.hrb to:@: \
 		copy from:target/hello3.hrb to:@: \
 		copy from:target/crack1.hrb to:@: \
+		copy from:target/crack2.hrb to:@: \
+		copy from:target/crack3.hrb to:@: \
+		copy from:target/crack4.hrb to:@: \
+		copy from:target/crack5.hrb to:@: \
 		copy from:source/ipl10.nas to:@: \
 		copy from:make.bat to:@: \
 		imgout:target/haribote.img
 
 # 通配符规则
-%.gas : source\%.c Makefile
-	$(CC1) -o target\$*.gas source\$*.c
 %.nas : %.gas Makefile
-	$(GAS2NASK) target\$*.gas target\$*.nas
+	$(GAS2NASK) target\$< target\$@
 %.obj : %.nas Makefile
-	$(NASK) target\$*.nas target\$*.obj target\$*.lst
+	$(NASK) target\$< target\$@ target\$*.lst
 
 # 汇总规则
 img :
@@ -138,8 +139,8 @@ clean :
 	-$(DEL) target\*.gas
 	-$(DEL) target\*.nas
 	-$(DEL) target\*.obj
-	-$(DEL) target\bootpack.map
-	-$(DEL) target\bootpack.bim
+	-$(DEL) target\*.map
+	-$(DEL) target\*.bim
 	-$(DEL) target\*.hrb
 	-$(DEL) target\haribote.sys
 

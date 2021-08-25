@@ -66,7 +66,7 @@ void init_gdtidt(void) {
     set_gatedesc(idt + 0x27, (int) asm_inthandler27, 2 * 8, AR_INTGATE32); // 注册电气噪声中断
     set_gatedesc(idt + 0x2c, (int) asm_inthandler2c, 2 * 8, AR_INTGATE32); // 注册鼠标中断
     // 注册系统API中断
-    set_gatedesc(idt + 0x40, (int) asm_system_api, 2 * 8, AR_INTGATE32);
+    set_gatedesc(idt + 0x40, (int) asm_system_api, 2 * 8, AR_INTGATE32 + 0x60); // 加上0x60表明可供应用程序触发
     
     return;
 }

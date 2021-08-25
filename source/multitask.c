@@ -148,6 +148,7 @@ struct TASK *task_alloc(void) {
             task = &taskctl->tasks[i];
             task->flags = 1; // 状态从未激活转为正在使用
             // 初始化TSS
+            task->tss.ss0 = 0; // 将tss.ss0置为0, 强制结束app时会检查该值, 若为0则代表app未运行, 不能再次结束app
             task->tss.ldtr = 0;
             task->tss.iomap = 0x40000000;
             // 初始化TSS的寄存器

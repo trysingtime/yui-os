@@ -3,7 +3,7 @@
 [BITS 32]                   ; 设定成32位机器语言模式
 
 ; 编译成obj文件的信息
-[FILE "a_nask.nas"]                   ; 源文件名
+[FILE "api.nas"]                   ; 源文件名
         ; 函数名
         GLOBAL _api_putchar,_api_end
 

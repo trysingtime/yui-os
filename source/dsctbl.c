@@ -58,13 +58,20 @@ void init_gdtidt(void) {
     }
     // 将IDT的中断个数(段个数*每段8字节, 此处256中断)和起始地址保存到IDTR寄存器
     load_idtr(LIMIT_IDT, ADR_IDT);
-    // 注册异常中断(在x86架构规范中, 当应用程序试图破坏操作系统或者违背操作系统设置时自动产生0x0d中断)
-    set_gatedesc(idt + 0x0d, (int) asm_inthandler0d, 2 * 8, AR_INTGATE32);
-    // 注册中断, 调用asm_inthandler函数, 段号为2
-    set_gatedesc(idt + 0x20, (int) asm_inthandler20, 2 * 8, AR_INTGATE32); // 注册定时器中断
-    set_gatedesc(idt + 0x21, (int) asm_inthandler21, 2 * 8, AR_INTGATE32); // 注册键盘中断
-    set_gatedesc(idt + 0x27, (int) asm_inthandler27, 2 * 8, AR_INTGATE32); // 注册电气噪声中断
-    set_gatedesc(idt + 0x2c, (int) asm_inthandler2c, 2 * 8, AR_INTGATE32); // 注册鼠标中断
+    /*
+        注册中断, 调用asm_inthandler函数, 段号为2
+        - 中断号: 异常中断(0x00~0x1f), IRQ(0x20~0x2f)
+        - 异常中断(0x00~0x1f): 0x00(除零异常), 0x06(非法指令异常), 0x0c(栈异常), 0x0d(一般保护异常)
+        - IRQ中断(0x00~0x1f): 0x20(定时器), 0x21(键盘), 0x27(电气噪声), 0x2c(鼠标)
+    */
+    // 注册异常中断
+    set_gatedesc(idt + 0x0c, (int) asm_inthandler0c, 2 * 8, AR_INTGATE32); // 栈异常
+    set_gatedesc(idt + 0x0d, (int) asm_inthandler0d, 2 * 8, AR_INTGATE32); // 一般保护异常
+    // 注册IRQ中断
+    set_gatedesc(idt + 0x20, (int) asm_inthandler20, 2 * 8, AR_INTGATE32); // 定时器
+    set_gatedesc(idt + 0x21, (int) asm_inthandler21, 2 * 8, AR_INTGATE32); // 键盘
+    set_gatedesc(idt + 0x27, (int) asm_inthandler27, 2 * 8, AR_INTGATE32); // 电气噪声
+    set_gatedesc(idt + 0x2c, (int) asm_inthandler2c, 2 * 8, AR_INTGATE32); // 鼠标
     // 注册系统API中断
     set_gatedesc(idt + 0x40, (int) asm_system_api, 2 * 8, AR_INTGATE32 + 0x60); // 加上0x60表明可供应用程序触发
     

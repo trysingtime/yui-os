@@ -470,20 +470,49 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         console_putstr1(console, (char *) ebx + cs_base, ecx); // ebx传入的是地址, 该地址值是app所在段的地址, 此时需要加上cs_base得到当前段地址
     } else if (edx == 4) {
         struct TASK *task = task_current();
-        return &(task->tss.esp0); // tss.esp0地址在start_app()时将操作系统的ESP和段号入栈, 此时还原, 使指令回到cmd_app(), 从而结束app
+        return &(task->tss.esp0); // tss.esp0的地址, start_app()时将操作系统的ESP和段号入栈该esp0, 此时还原(ss:esp), 使指令回到cmd_app(), 从而结束app
     }
     return 0;
 }
 
 /*
-    异常中断处理函数
+    一般保护异常(General Protected Exception)中断处理函数
+    - 异常中断(0x00~0x1f): 0x00(除零异常), 0x06(非法指令异常), 0x0c(栈异常), 0x0d(一般保护异常)
     - 在x86架构规范中, 当应用程序试图破坏操作系统或者违背操作系统设置时自动产生0x0d中断
     - 此处仅打印信息, 返回值设置为非0, 让asm_inthandler0d()结束应用程序
+    - esp: 64字节(16*int), esp[0~16]值依次为: EDI,ESI,EBP,ESP,EBX,EDX,ECX,EAX,DS,ES,错误编号(基本是0),EIP,CS,EFLAGS,ESP(app),SS(app)
+            其中esp[10~15]为异常产生时CPU自动PUSH的结果
 */
 int *inthandler0d(int *esp) {
     // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
     struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
     console_putstr0(console, "\nINT 0D :\n General Protected Exception.\n");
+    // 打印引发异常的指令地址
+    char s[30];
+    sprintf(s, "EIP = %08X\n", esp[11]);
+    console_putstr0(console, s);
+    // 强制结束app
+    struct TASK *task = task_current();
+    return &(task->tss.esp0); // tss.esp0地址在start_app()时将操作系统的ESP和段号入栈, 此时还原, 使指令回到cmd_app(), 从而结束app
+}
+
+/*
+    栈异常(Stack Exception)中断处理函数
+    - 异常中断(0x00~0x1f): 0x00(除零异常), 0x06(非法指令异常), 0x0c(栈异常), 0x0d(一般保护异常)
+    - 栈异常只保护操作系统, 禁止app访问自身数据段以外的内存地址, 对数据段内的数据bug不处理
+    - 此处仅打印信息, 返回值设置为非0, 让asm_inthandler0c()结束应用程序
+    - esp: 64字节(16*int), esp[0~16]值依次为: EDI,ESI,EBP,ESP,EBX,EDX,ECX,EAX,DS,ES,错误编号(基本是0),EIP,CS,EFLAGS,ESP(app),SS(app)
+        其中esp[10~15]为异常产生时CPU自动PUSH的结果
+*/
+int *inthandler0c(int *esp) {
+    // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
+    struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
+    console_putstr0(console, "\nINT 0D :\n Stack Exception.\n");
+    // 打印引发异常的指令地址
+    char s[30];
+    sprintf(s, "EIP = %08X\n", esp[11]);
+    console_putstr0(console, s);
+    // 强制结束app
     struct TASK *task = task_current();
     return &(task->tss.esp0); // tss.esp0地址在start_app()时将操作系统的ESP和段号入栈, 此时还原, 使指令回到cmd_app(), 从而结束app
 }

@@ -350,6 +350,22 @@ void HariMain(void) {
                     fifo32_put(&keycmd, KEYCMD_LED);
                     fifo32_put(&keycmd, key_leds);                    
                 }
+                if (i == 256 + 0x3b && key_shift !=0) {
+                    /* Shitf+F1组合键处理: 强制结束app */
+                    // 强制结束app时检查tss.ss0, 若为0则代表app未运行, 不能再次结束app.(启动app时会将操作系统段号放入tss.ss0, 结束app时会将tss.ss0置为0)
+                    if (task_console->tss.ss0 != 0) {
+                        // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
+                        struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
+                        // 打印信息
+                        console_putstr0(console, "\nBreak(key) :\n");
+                        // 改变TSS寄存器值时不能切换到其他任务
+                        io_cli();
+                        // 通过修改tss.eip的值jmp到asm_end_app函数(强制结束app的函数)
+                        task_console->tss.eax = (int) &(task_console->tss.esp0); // asm_end_app函数所需的参数
+                        task_console->tss.eip = (int) asm_end_app; // 调用asm_end_app函数
+
+                    }
+                }
                 if (i == 256 + 0xfa) {
                     /* 键盘接收数据成功 */
                     keycmd_wait = -1; // 可以发送下一数据

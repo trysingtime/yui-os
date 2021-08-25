@@ -40,26 +40,33 @@ default :
 	$(MAKE) img
 
 # 应用程序
-app : a.hrb hello.hrb hello2.hrb hello3.hrb crack1.hrb crack2.hrb crack3.hrb crack4.hrb crack5.hrb
+app : normal.app bug.app
+normal.app : a.hrb hello.hrb hello2.hrb hello3.hrb
+crack.app : crack1.hrb crack2.hrb crack3.hrb crack4.hrb crack5.hrb
+bug.app : bug1.hrb bug2.hrb bug3.hrb
 ## 汇编语言
 %.hrb : app\%.nas Makefile
 	$(NASK) $< target\$@ target\$*.lst
 %.hrb : crack\%.nas Makefile
 	$(NASK) $< target\$@ target\$*.lst
+%.hrb : bug\%.nas Makefile
+	$(NASK) $< target\$@ target\$*.lst
 
 ## 汇编语言API
-a_nask.obj : source\a_nask.nas Makefile
-	$(NASK) source\a_nask.nas target\a_nask.obj target\a_nask.lst
+api.obj : source\api.nas Makefile
+	$(NASK) source\api.nas target\api.obj target\api.lst
 
 ## C语言(通过通配符c->gas->nas->obj)
 %.gas : app\%.c Makefile
 	$(CC1) -o target\$@ $<
 %.gas : crack\%.c Makefile
 	$(CC1) -o target\$@ $<
+%.gas : bug\%.c Makefile
+	$(CC1) -o target\$@ $<
 
 ## 汇编语言API+C语言
-%.bim : %.obj a_nask.obj Makefile
-	$(OBJ2BIM) @$(RULEFILE) out:target\$*.bim map:target\$*.map target\$*.obj target\a_nask.obj
+%.bim : %.obj api.obj Makefile
+	$(OBJ2BIM) @$(RULEFILE) out:target\$*.bim map:target\$*.map target\$*.obj target\api.obj
 %.hrb : %.bim Makefile
 	$(BIM2HRB) target\$*.bim target\$*.hrb 0
 
@@ -106,11 +113,9 @@ haribote.img : ipl10.bin haribote.sys app Makefile
 		copy from:target/hello.hrb to:@: \
 		copy from:target/hello2.hrb to:@: \
 		copy from:target/hello3.hrb to:@: \
-		copy from:target/crack1.hrb to:@: \
-		copy from:target/crack2.hrb to:@: \
-		copy from:target/crack3.hrb to:@: \
-		copy from:target/crack4.hrb to:@: \
-		copy from:target/crack5.hrb to:@: \
+		copy from:target/bug1.hrb to:@: \
+		copy from:target/bug2.hrb to:@: \
+		copy from:target/bug3.hrb to:@: \
 		copy from:source/ipl10.nas to:@: \
 		copy from:make.bat to:@: \
 		imgout:target/haribote.img

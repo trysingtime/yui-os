@@ -15,11 +15,13 @@
         GLOBAL _write_mem8, _read_mem8
         GLOBAL _load_gdtr, _load_idtr, _load_tr
         GLOBAL _load_cr0, _store_cr0
-        GLOBAL _asm_inthandler20, _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c, _asm_inthandler0d
+        GLOBAL _asm_inthandler20, _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
+        GLOBAL _asm_inthandler0d, _asm_inthandler0c
         GLOBAL _memtest_sub
-        GLOBAL _farjmp, _farcall, _start_app
+        GLOBAL _farjmp, _farcall, _start_app, _asm_end_app
         GLOBAL _asm_system_api
-	EXTERN _inthandler20, _inthandler21, _inthandler27, _inthandler2c, _inthandler0d
+	EXTERN _inthandler20, _inthandler21, _inthandler27, _inthandler2c
+        EXTERN _inthandler0d, _inthandler0c
         EXTERN _system_api
 
 [SECTION .text]             ; 目标文件中写了这些之后再写程序
@@ -143,7 +145,9 @@ _store_cr0:     ; void store_cr0(int cr0);
         MOV     CR0,EAX
         RET
 
-; 调用C语言inthandler20方法(定时器中断)
+; 中断号: 异常中断(0x00~0x1f), IRQ(0x20~0x2f)
+; IRQ中断(0x00~0x1f): 0x20(定时器), 0x21(键盘), 0x27(电气噪声), 0x2c(鼠标)
+; 定时器中断(调用C语言inthandler20方法)
 _asm_inthandler20:
         PUSH	ES
         PUSH	DS
@@ -160,7 +164,7 @@ _asm_inthandler20:
         POP	ES
         IRETD                           ; 使用IDT中断触发操作系统(段号2)的_asm_console_putchar函数, 因此操作系统上要相应使用IRETD回应
 
-; 调用C语言inthandler21方法(来自PS/2键盘的中断)
+; 来自PS/2键盘的中断(调用C语言inthandler21方法)
 _asm_inthandler21:
         PUSH	ES
         PUSH	DS
@@ -177,7 +181,7 @@ _asm_inthandler21:
         POP	ES
         IRETD
 
-; 调用C语言inthandler27方法(电气噪声中断)
+; 电气噪声中断(调用C语言inthandler27方法)
 _asm_inthandler27:
         PUSH	ES
         PUSH	DS
@@ -194,7 +198,7 @@ _asm_inthandler27:
         POP	ES
         IRETD
 
-; 调用C语言inthandler2c方法(来自PS/2鼠标的中断)
+; 来自PS/2鼠标的中断(调用C语言inthandler2c方法)
 _asm_inthandler2c:
         PUSH	ES
         PUSH	DS
@@ -211,12 +215,15 @@ _asm_inthandler2c:
         POP	ES
         IRETD
 
-; 调用C语言inthandler0d方法(异常中断), 在x86架构规范中, 当应用程序试图破坏操作系统或者违背操作系统设置时自动产生0x0d中断
-_asm_inthandler0d:
+; 异常中断(0x00~0x1f): 0x00(除零异常), 0x06(非法指令异常), 0x0c(栈异常), 0x0d(一般保护异常)
+; 一般保护异常中断(调用C语言inthandler0d方法), 在x86架构规范中, 当应用程序试图破坏操作系统或者违背操作系统设置时自动产生0x0d中断
+_asm_inthandler0d:      ; int *inthandler0d(int *esp)
         STI
-        PUSH	ES
-        PUSH	DS
-        PUSHAD                          ; 调用函数前,通用寄存器全部入栈
+; esp参数:64字节(16*int),esp[0~16]值依次为:EDI,ESI,EBP,ESP,EBX,EDX,ECX,EAX,DS,ES,错误编号(基本是0),EIP,CS,EFLAGS,ESP(app),SS(app),其中esp[10~15]为异常产生时CPU自动PUSH的结果
+        PUSH	ES                      ; ESP参数
+        PUSH	DS                      ; ESP参数
+        PUSHAD                          ; ESP参数, 32位通用寄存器的值全部入栈(入栈顺序EDI,ESI,EBP,ESP,EBX,EDX,ECX,EAX)
+
         MOV	EAX,ESP                 
         PUSH	EAX
         MOV	AX,SS                   ; 调用C语言函数前, SS,DS,ES设置成相同(C语言规范)
@@ -224,7 +231,7 @@ _asm_inthandler0d:
         MOV	ES,AX
         CALL	_inthandler0d
         CMP     EAX,0
-        JNE     end_app                 ; 函数返回值不为0, 则结束app, 此时EAX中保存着tss.esp0的地址        
+        JNE     _asm_end_app            ; 函数返回值不为0, 则结束app, 此时EAX中保存着tss.esp0的地址        
         POP	EAX
         POPAD
         POP	DS
@@ -232,10 +239,32 @@ _asm_inthandler0d:
         ADD     ESP,4                   ; INT 0x0d中需要这句
         IRETD                           ; 使用IDT中断触发操作系统(段号2)的_asm_console_putchar函数, 因此操作系统上要相应使用IRETD回应
 
+; 栈异常中断(调用C语言inthandler0c方法), 栈异常只保护操作系统, 禁止app访问自身数据段以外的内存地址, 对数据段内的数据bug不处理
+_asm_inthandler0c:
+        STI
+; esp参数:64字节(16*int),esp[0~16]值依次为:EDI,ESI,EBP,ESP,EBX,EDX,ECX,EAX,DS,ES,错误编号(基本是0),EIP,CS,EFLAGS,ESP(app),SS(app),其中esp[10~15]为异常产生时CPU自动PUSH的结果
+        PUSH	ES                      ; ESP参数
+        PUSH	DS                      ; ESP参数
+        PUSHAD                          ; ESP参数, 32位通用寄存器的值全部入栈(入栈顺序EDI,ESI,EBP,ESP,EBX,EDX,ECX,EAX)
+
+        MOV	EAX,ESP                 
+        PUSH	EAX
+        MOV	AX,SS                   ; 调用C语言函数前, SS,DS,ES设置成相同(C语言规范)
+        MOV	DS,AX                   
+        MOV	ES,AX
+        CALL	_inthandler0d
+        CMP     EAX,0
+        JNE     _asm_end_app            ; 函数返回值不为0, 则结束app, 此时EAX中保存着tss.esp0的地址        
+        POP	EAX
+        POPAD
+        POP	DS
+        POP	ES
+        ADD     ESP,4                   ; INT 0x0c中需要这句
+        IRETD                           ; 使用IDT中断触发操作系统(段号2)的_asm_console_putchar函数, 因此操作系统上要相应使用IRETD回应
 
 ; 内存容量检查(参考C语言方法memtest_sub_c()说明)
 _memtest_sub:	; unsigned int memtest_sub(unsigned int start, unsigned int end)
-		PUSH	EDI						; （EBX, ESI, EDI も使いたいので）
+		PUSH	EDI
 		PUSH	ESI
 		PUSH	EBX
 		MOV		ESI,0xaa55aa55			; pat0 = 0xaa55aa55;
@@ -286,9 +315,9 @@ _start_app:             ; void start_app(int eip, int cs, int esp, int ds, int *
                 MOV             ECX,[ESP+40]    ; 参数cs, 为app代码段段号
                 MOV             EDX,[ESP+44]    ; 参数esp, 此参数为栈大小, 也即栈顶
                 MOV             EBX,[ESP+48]    ; 参数ds/ss, 为app数据段段号
-                MOV             EBP,[ESP+52]    ; 参数tss_esp0, 应用程序专用段需要在TSS中注册操作系统的段号和ESP(将操作系统的ESP和段号先后压入TSS栈esp0)
-                MOV             [EBP],ESP       ; 将操作系统的ESP压入TSS.esp0
-                MOV             [EBP+4],SS      ; 将操作系统的段号压入TSS.esp0
+                MOV             EBP,[ESP+52]    ; 参数tss_esp0, 应用程序专用段需要在TSS中注册操作系统的段号和ESP(将操作系统的ESP压入tss.esp0, 将段号压入tss.ss0)
+                MOV             [EBP],ESP       ; 将操作系统的ESP(此时ESP压入了8个32位通用寄存器, 以及上述5个参数)压入tss.esp0, app结束时将会还原该ESP
+                MOV             [EBP+4],SS      ; 将操作系统的段号压入tss.ss0
 ; 操作系统跨段调用app前设定段寄存器(因为app注册了应用专用段, 因此无需手动设定和切换栈)
                 MOV             ES,BX
                 MOV             DS,BX
@@ -318,15 +347,16 @@ _asm_system_api:        ; int system_api(int edi, int esi, int ebp, int esp, int
                 MOV             ES,AX
                 CALL            _system_api     ; 调用C语言函数system_api, 根据ebx值来判断调用哪个函数
                 CMP             EAX,0
-                JNE             end_app         ; 函数返回值不为0, 则结束app, 此时EAX中保存着tss.esp0的地址
+                JNE             _asm_end_app    ; 函数返回值不为0, 则结束app, 此时EAX中保存着tss.esp0的地址
                 ADD             ESP,32          ; 丢弃之前入栈的参数
                 POPAD                           ; 还原通用寄存器
                 POP             ES
                 POP             DS
                 IRETD                           ; 使用IDT中断触发操作系统(段号2)的_asm_console_putchar函数, 因此操作系统上要相应使用IRETD回应
 
-; 结束app
-end_app:
-                MOV             ESP,[EAX]       ; tss.esp0的地址, 该地址在start_app()时将操作系统的ESP和段号入栈, 此时还原(ss:esp), 使指令回到cmd_app(), 从而结束app
-                POPAD
-                RET                             ; 因start_app()是通过RETF调用app的, 此处RET将直接返回cmd_app()
+; 强制结束app(还原存于tss中的esp, 然后通过启动app前压入esp中的数据, 还原寄存器, 最后通过RET回到cmd_app(), 从而结束app)
+_asm_end_app:
+                MOV             ESP,[EAX]       ; tss.esp0的地址, start_app()时将操作系统的esp入栈esp0, 段号入栈ss0, 此时还原esp
+                MOV             DWORD [EAX+4],0 ; tss.ss0的地址, app结束, 将tss.ss0置为0, 后续检查该值, 若为0则不能再次结束app
+                POPAD                           ; 还原的esp压入了8个32位通用寄存器, 以及5个启动app的参数, 此处还原8个通用寄存器
+                RET                             ; 因start_app()是通过RETF调用app的, 此处RET将直接返回cmd_app(), 从而结束app

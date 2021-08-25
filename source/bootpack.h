@@ -40,15 +40,17 @@ void load_tr(int tr);
 int load_cr0(void);
 /* CR0寄存器(32位)存储值 */
 void store_cr0(int cr0);
-/* 异常中断处理函数(在x86架构规范中, 当应用程序试图破坏操作系统或者违背操作系统设置时自动产生0x0d中断) */
+/* 栈异常中断(只保护操作系统, 禁止app访问自身数据段以外的内存地址, 对数据段内的数据bug不处理) */
+void asm_inthandler0c(void);
+/* 一般保护异常中断(在x86架构规范中, 当应用程序试图破坏操作系统或者违背操作系统设置时自动产生0x0d中断) */
 void asm_inthandler0d(void);
-/* 定时器中断处理函数 */
+/* 定时器中断 */
 void asm_inthandler20(void);
-/* 键盘中断处理函数 */
+/* 键盘中断 */
 void asm_inthandler21(void);
-/* 电气噪声处理函数 */
+/* 电气噪声 */
 void asm_inthandler27(void);
-/* 鼠标中断处理函数 */
+/* 鼠标中断 */
 void asm_inthandler2c(void);
 /* 内存容量检查 */
 unsigned int memtest_sub(unsigned int start, unsigned int end);
@@ -70,6 +72,12 @@ void farcall(int eip, int cs);
     - tss_esp0: 应用程序专用段需要在TSS中注册操作系统的段号和ESP(将操作系统的ESP和段号先后压入TSS栈esp0)
 */
 void start_app(int eip, int cs, int esp, int ds, int *tss_esp0);
+/*
+    强制结束app
+    - 还原存于tss中的esp, 然后通过启动app前压入esp中的数据, 还原寄存器, 最后通过RET回到cmd_app(), 从而结束app
+    - 隐含参数: 调用该参数前需要在EAX寄存器中放入"启动app前的栈地址esp", start_app时将该地址放入了tss.esp0, 可以从此获得
+*/
+void asm_end_app(void);
 /* 系统API中断函数, 由INT 0x40触发, 根据ebx值调用系统函数 */
 int asm_system_api(void);
 
@@ -411,6 +419,7 @@ void cmd_type(struct CONSOLE *console, int *fat, char *cmdline);
 int cmd_app(struct CONSOLE *console, int *fat, char *cmdline);
 int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
 int *inthandler0d(int *esp);
+int *inthandler0c(int *esp);
 
 /* file.c */
 /*

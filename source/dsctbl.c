@@ -28,6 +28,12 @@ IDT(interrupt descriptor table): 中断记录表, IDT由GATE_DESCRIPTOR(8字节)
 - IDTR(interrupt descriptor table register)(48位)中保存IDT的起始地址和个数
 - IDT保存许多GATE_DESCRIPTOR(8字节)
 - GATE_DESCRIPTOR存储中断函数地址, 段号, 属性
+
+应用程序专用段(段属性加上0x60)
+- 应用程序专用段需要在TSS中注册操作系统的段号和ESP(将操作系统的ESP和段号先后压入TSS栈esp0)
+- 应用程序专用段将会限制app使用IN/OUT/HLT/CLI/STI/CALL等一系列操作, 也无法修改段寄存器为操作系统的段号
+- 应用程序专用段不允许操作系统far-CALL/far-JMP应用程序, 因此通过RETF(far-CALL的回应,本质是从栈中将地址POP,然后far-JMP)来实现
+- 应用程序专用段允许应用程序far-CALL/far-JMP操作系统
 */
 
 #include "bootpack.h"

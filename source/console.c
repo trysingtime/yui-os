@@ -398,46 +398,37 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
         // 读取文件内容到*p地址, 使用完后需要释放掉
         struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
         char *p = (char *) memory_alloc_4k(mng, fileinfo->size);
-        *((int *) 0xfe8) = (int) p; // API: 将app文件内存地址放入0x0fe8中, app可以通过0x0fe8获取自身起始地址, 进而调用系统API
         fiel_loadfile(fileinfo->clustno, fileinfo->size, p, fat, (char *) (ADR_DISKIMG + 0x003e00));
-        // 调用C语言编写的app
-        if (fileinfo->size >= 8 && strncmp(p + 4, "Hari", 4) == 0) {
-            /*
-                修改读取到的C语言编写的app(.hrb)的二进制代码的开头6字节, 相当于以下代码:
-                [BITS 32]
-                    CALL    0x1b
-                    RETF
-                汇编语言编写的app只需要far-Call到指定段后按顺序执行即可, 之后app函数上要相应使用far-RET回应
-                C语言编写的app需要跳转到HariMain所在的地址再顺序执行(Call 0x1b), 并且后续使用了far-RET(RETF)返回, 因此app函数上无需far-RET
-            */
-            p[0] = 0xe8;
-            p[1] = 0x16;
-            p[2] = 0x00;
-            p[3] = 0x00;
-            p[4] = 0x00;
-            p[5] = 0xcb;
+        // 启动app
+        if (fileinfo->size >= 36 && strncmp(p + 4, "Hari", 4) == 0 && *p == 0x00) {
+            // .hrb文件开头的36字节存放了文件信息(详情见README.MD)
+            int segment_size    = *((int *) (p + 0x0000)); // 请求操作系统为应用程序准备的数据段的大小
+            int esp             = *((int *) (p + 0x000c)); // ESP初值(栈顶, 栈大小由obj2bim参数如(stack:1k)决定)
+            int datasize        = *((int *) (p + 0x0010)); // hrb 文件内数据部分的大小
+            int datastart       = *((int *) (p + 0x0014)); // hrb 文件内数据部分的起始地址
+            // 将app代码段注册到GDT, 段号1003(段号1~2由dsctbl.c使用, 段号3~1002由multitask.c使用), 段属性加上0x60, 将段设置成应用程序专用段
+            struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADR_GDT; // GDT地址
+            set_segmdesc(gdt + 1003, fileinfo->size - 1, (int) p, AR_CODE32_ER + 0x60);
+            // 将app数据段注册到GDT, 段号1004, 大小segment_size, 段属性加上0x60, 将段设置成应用程序专用段
+            char *q = (char *) memory_alloc_4k(mng, segment_size);
+            *((int *) 0xfe8) = (int) q; // 将app数据段起始地址放入0x0fe8中, 便于app调用系统API
+            set_segmdesc(gdt + 1004, segment_size - 1, (int) q, AR_DATA32_RW + 0x60);
+            // 将hrb文件的数据部分复制到数据段(存放在堆栈后面, 因此形成: 数据段=栈+hrb文件数据)
+            int i;
+            for (i = 0; i < datasize; i++) {
+                q[esp + i] = p[datastart + i];
+            }
+            // 在TSS中注册操作系统的段号和ESP(将操作系统的ESP和段号先后压入TSS栈esp0)
+            struct TASK *task = task_current();
+            // C语言编写的app需要跳转到.hrb文件0x1b位置(该位置为JMP指令, 会再次跳转到真正的app启动点)
+            start_app(0x1b, 1003 * 8, esp, 1004 * 8, &(task->tss.esp0));
+            // 新版本使用了RETF来调用app函数, app不能再使用far-RET回应, 而是直接调用asm_end_app结束程序直接返回到此处
+            memory_free_4k(mng, (int) q, segment_size); // 释放内存
+        } else {
+            console_putstr0(console, ".hrb file format error.\n");
         }
-        /* 
-            应用程序专用段(段属性加上0x60)
-            - 应用程序专用段需要在TSS中注册操作系统的段号和ESP(将操作系统的ESP和段号先后压入TSS栈esp0)
-            - 应用程序专用段将会限制app使用IN/OUT/HLT/CLI/STI/CALL等一系列操作, 也无法修改段寄存器为操作系统的段号
-            - 应用程序专用段不允许操作系统far-CALL/far-JMP应用程序, 因此通过RETF(far-CALL的回应,本质是从栈中将地址POP,然后far-JMP)来实现
-            - 应用程序专用段允许应用程序far-CALL/far-JMP操作系统
-        */
-        // 将app代码段注册到GDT, 段号1003(段号1~2由dsctbl.c使用, 段号3~1002由multitask.c使用), 段属性加上0x60, 将段设置成应用程序专用段
-        struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADR_GDT; // GDT地址
-        set_segmdesc(gdt + 1003, fileinfo->size - 1, (int) p, AR_CODE32_ER + 0x60);
-        // 将app数据段注册到GDT, 段号1004, 大小64KB, 段属性加上0x60, 将段设置成应用程序专用段
-        char *q = (char *) memory_alloc_4k(mng, 64 * 1024);
-        set_segmdesc(gdt + 1004, 64 * 1024 - 1, (int) q, AR_DATA32_RW + 0x60);
-        // 在TSS中注册操作系统的段号和ESP(将操作系统的ESP和段号先后压入TSS栈esp0)
-        struct TASK *task = task_current();
-        // 使用far-Call跨段调用app函数(代码段号1003, 数据段号1004, 栈大小64KB), 因此app函数上要相应使用far-RET回应
-        // 新版本使用了RETF来调用app函数, app不能再使用far-RET回应, 而是直接调用end_app结束程序直接返回到此处
-        start_app(0, 1003 * 8, 64 * 1024, 1004 * 8, &(task->tss.esp0));
         // 释放内存
         memory_free_4k(mng, (int) p, fileinfo->size);
-        memory_free_4k(mng, (int) q, 64 * 1024);
         
         console_newline(console);
         return 1;
@@ -453,7 +444,7 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
 int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax) {
     // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
     struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
-    // app文件内存地址, 此处从0x0fe8获取, 系统运行app时, 已将app文件地址放入0x0fe8
+    // app数据段起始地址, 此处从0x0fe8获取, 系统运行app时, 已将数据段起始地址放入0x0fe8
     int cs_base = *((int *) 0xfe8);
     /* 
         根据edx的值来判断调用哪个函数
@@ -465,9 +456,9 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
     if (edx == 1) {
         console_putchar(console, eax & 0xff, 1); // eax存放character参数, (eax & 0xff)只保留低8位, 高位全部置0
     } else if (edx == 2) {
-        console_putstr0(console, (char *) ebx + cs_base); // ebx传入的是地址, 该地址值是app所在段的地址, 此时需要加上cs_base得到当前段地址
+        console_putstr0(console, (char *) ebx + cs_base); // ebx传入的是在app数据段中的相对地址, 加上cs_base(段起始地址)得到准确地址
     } else if (edx == 3) {
-        console_putstr1(console, (char *) ebx + cs_base, ecx); // ebx传入的是地址, 该地址值是app所在段的地址, 此时需要加上cs_base得到当前段地址
+        console_putstr1(console, (char *) ebx + cs_base, ecx); // ebx传入的是在app数据段中的相对地址, 加上cs_base(段起始地址)得到准确地址
     } else if (edx == 4) {
         struct TASK *task = task_current();
         return &(task->tss.esp0); // tss.esp0的地址, start_app()时将操作系统的ESP和段号入栈该esp0, 此时还原(ss:esp), 使指令回到cmd_app(), 从而结束app

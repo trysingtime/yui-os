@@ -41,7 +41,7 @@ default :
 
 # 应用程序
 app : normal.app bug.app
-normal.app : a.hrb hello.hrb hello2.hrb hello3.hrb
+normal.app : a.hrb hello.hrb hello2.hrb hello3.hrb hello4.hrb hello5.hrb
 crack.app : crack1.hrb crack2.hrb crack3.hrb crack4.hrb crack5.hrb
 bug.app : bug1.hrb bug2.hrb bug3.hrb
 ## 汇编语言
@@ -66,7 +66,7 @@ api.obj : source\api.nas Makefile
 
 ## 汇编语言API+C语言
 %.bim : %.obj api.obj Makefile
-	$(OBJ2BIM) @$(RULEFILE) out:target\$*.bim map:target\$*.map target\$*.obj target\api.obj
+	$(OBJ2BIM) @$(RULEFILE) out:target\$*.bim stack:1k map:target\$*.map target\$*.obj target\api.obj
 %.hrb : %.bim Makefile
 	$(BIM2HRB) target\$*.bim target\$*.hrb 0
 
@@ -90,7 +90,7 @@ naskfunc.obj : source\naskfunc.nas Makefile
 	$(NASK) source\naskfunc.nas target\naskfunc.obj target\naskfunc.lst
 
 ## C语言(通过通配符c->gas->nas->obj)
-%.gas : source\%.c Makefile
+%.gas : source\%.c source\bootpack.h Makefile
 	$(CC1) -o target\$@ $<
 
 ## TXT文件+汇编语言+C语言
@@ -113,6 +113,8 @@ haribote.img : ipl10.bin haribote.sys app Makefile
 		copy from:target/hello.hrb to:@: \
 		copy from:target/hello2.hrb to:@: \
 		copy from:target/hello3.hrb to:@: \
+		copy from:target/hello4.hrb to:@: \
+		copy from:target/hello5.hrb to:@: \
 		copy from:target/bug1.hrb to:@: \
 		copy from:target/bug2.hrb to:@: \
 		copy from:target/bug3.hrb to:@: \

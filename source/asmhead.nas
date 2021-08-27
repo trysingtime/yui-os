@@ -145,14 +145,14 @@ pipelineflush:
 ; 必须由asmhead来完成的工作, 至此全部完毕, 以后就交由bootpack来完成
 ; 堆栈初始化及启动bootpack
 		MOV		EBX,BOTPAK		; BOTPAK值为0x00280000, 是bootpack.hrb起始地址
-		MOV		ECX,[EBX+16]	; 转送数据大小, [EBX+16]值为0x11a8(可以打开bootpack.hbr以十六进制查看)
+		MOV		ECX,[EBX+16]	; 转送数据大小, [EBX+16]为hrb文件信息0x10(记录hrb文件数据段大小)
 		ADD		ECX,3			; ECX += 3
 		SHR		ECX,2			; ECX /= 4
 		JZ		skip			; 若[EBX+16]值小于1, 跳过复制内存
-		MOV		ESI,[EBX+20]	; 转送源地址, [EBX+20]值为0x10c8
-		ADD		ESI,EBX			; 此时ESI值为0x002810c8, 表示bootpack.hrb第0x11a8字节
-		MOV		EDI,[EBX+12]	; 转送目的地址, [EBX+12]值为0x00310000, 该内存用于堆栈
-		CALL	memcpy			; 将bootpack.hrb第0x10c8字节开始的0x11a8字节复制到0x00310000地址
+		MOV		ESI,[EBX+20]	; [EBX+20]为hrb文件信息0x14(记录hrb文件数据段起始地址)
+		ADD		ESI,EBX			; 转送源地址=BOTPAK+偏移地址, 表示bootpack.hrb文件数据段起始地址
+		MOV		EDI,[EBX+12]	; 转送目的地址, [EBX+12](0x00310000)为hrb文件信息0x0c(记录hrb文件指定的栈顶地址,hrb文件数据段保存到栈之后)
+		CALL	memcpy			; 将bootpack.hrb文件的数据段内容复制到文件指定的栈顶(0x00310000)之后
 skip:
 		MOV		ESP,[EBX+12]	; 堆栈的初始化(0x00300000~0x003fffff用于堆栈)
 		JMP		DWORD 2*8:0x0000001b	; (far-JMP, 同时改变EIP和CS, CS段寄存器低3位无效, 需要*8)跳转到段号2(0x280000(bootpack.hrb))的0x1b地址, 即0x28001b(bootpack.hrb的0x1b地址), 也即启动bootpack

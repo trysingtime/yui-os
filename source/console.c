@@ -423,6 +423,15 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
             start_app(0x1b, 1003 * 8, esp, 1004 * 8, &(task->tss.esp0));
             /* 正常返回: 新版本使用了RETF来调用app函数, app不能再使用far-RET回应, 而是直接调用asm_end_app结束程序直接返回到此处 */
             /* 强制返回: Shift + F1 组合键强制结束app也会返回此处 */
+
+            // 遍历所有图层, 关闭所有绑定到控制台task的图层
+            struct LAYERCTL *layerctl = (struct LAYERCTL *) *((int *) 0x0fe4); // 图层控制器地址, 操作系统启动时已将地址放入了0x0fe4
+            for (i = 0; i < MAX_LAYERS; i++) {
+                struct LAYER *layer = &(layerctl->layers[i]);
+                if (layer->flags != 0 && layer->task == task) {
+                    layer_free(layer);
+                }
+            }
             // 释放app数据段内存
             memory_free_4k(mng, (int) q, segment_size); // 释放内存
         } else {
@@ -473,6 +482,8 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         // 新建图层
         struct LAYERCTL *layerctl = (struct LAYERCTL *) *((int *) 0x0fe4); // 图层控制器地址, 操作系统启动时已将地址放入了0x0fe4
         struct LAYER *layer = layer_alloc(layerctl);
+        // 将图层绑定到控制台task, app正常结束或强制结束后都会关闭所有绑定到控制台task的图层
+        layer->task = task_current();
         layer_init(layer, (char *) ebx + ds_base, esi, edi, eax);
         // 新建窗口
         make_window8((char *) ebx + ds_base, esi, edi, (char *) ecx + ds_base, 0);

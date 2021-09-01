@@ -252,17 +252,20 @@ int memory_free_4k(struct MEMMNG *mng, unsigned int addr, unsigned int size);
 #define MAX_LAYERS      256 // 最大图层数
 /*
     图层
-    buf: 图层关联的内容地址;
-    bxsize, bysize: 图层大小;
-    vx0, v0: 图层坐标
-    col_inv: color(颜色)和invisible(透明度)
-    height: 图层高度
-    flags: 图层已使用标识
+    - buf: 图层关联的内容地址;
+    - bxsize, bysize: 图层大小;
+    - vx0, v0: 图层坐标
+    - col_inv: color(颜色)和invisible(透明度)
+    - height: 图层高度
+    - flags: 图层已使用标识
+    - ctl: 图层控制器地址
+    - task: 图层所属的task地址
 */
 struct LAYER {
     unsigned char *buf;
     int bxsize, bysize, vx0, vy0, col_inv, height, flags;
     struct LAYERCTL *ctl;
+    struct TASK *task;
 };
 /*
     图层控制器

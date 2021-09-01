@@ -45,6 +45,7 @@ struct LAYER *layer_alloc(struct LAYERCTL * ctl) {
             layer = &ctl->layers[i];
             layer->flags = LAYER_USED; // 标志从未使用改为正在使用
             layer->height = -1;
+            layer->task = 0; // 默认图层不属于任何task
             return layer;
         }
     }

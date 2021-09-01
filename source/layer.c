@@ -181,12 +181,13 @@ void layer_refresh_map(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1,
 
 /*
     改变图层高度并刷新图层
+    - 实际图层高度由已有的图层决定, 而不是传入的值, 相同高度后者更低
     需要根据高度升序重建索引: layersorted
     图层降低: 重绘上层(大于)图层~顶部图层
     图层隐藏: 重绘上层(大于)图层~顶部图层(-1)
     图层上升: 重绘本图层
     - layer: 指定图层
-    - height: 指定高度
+    - height: 指定高度(实际高度由已有图层决定, 而不是该值)
 */
 void layer_updown(struct LAYER *layer, int height) {
     struct LAYERCTL *ctl = layer->ctl;
@@ -239,9 +240,9 @@ void layer_updown(struct LAYER *layer, int height) {
             ctl->layersorted[height] = layer;
             ctl->top++;
         }
+        layer_refresh_map(ctl, layer->vx0, layer->vy0, layer->vx0 + layer->bxsize, layer->vy0 + layer->bysize, height); // 重新计算像素点由哪个图层负责
+        layer_refresh_abs(ctl, layer->vx0, layer->vy0, layer->vx0 + layer->bxsize, layer->vy0 + layer->bysize, height, height); // 重绘该图层
     }
-    layer_refresh_map(ctl, layer->vx0, layer->vy0, layer->vx0 + layer->bxsize, layer->vy0 + layer->bysize, height); // 重新计算像素点由哪个图层负责
-    layer_refresh_abs(ctl, layer->vx0, layer->vy0, layer->vx0 + layer->bxsize, layer->vy0 + layer->bysize, height, height); // 重绘该图层
     return;
 }
 

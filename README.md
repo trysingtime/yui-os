@@ -23,4 +23,4 @@ learn to make os
 0x0014(DWORD)   hrb 文件内数据的起始地址
 0x0018(DWORD)   0xe9000000(E9为Near Jump(近跳转), 后面地址为相对位移)
 0x001c(DWORD)   应用程序入口地址 - 0x20(相对位移, 0x18(实际为0x1b)的JMP指令执行后EIP为0x20, 因此需要减去0x20得到相对位移)
-0x0020(DWORD)   malloc 空间起始地址
+0x0020(DWORD)   malloc 空间起始地址(数据段的相对地址, 而不是代码段)

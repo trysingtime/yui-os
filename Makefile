@@ -40,8 +40,8 @@ default :
 	$(MAKE) img
 
 # 应用程序
-app : normal.app bug.app
-normal.app : a.hrb hello.hrb hello2.hrb hello3.hrb hello4.hrb hello5.hrb
+app : normal.app
+normal.app : a.hrb hello.hrb hello2.hrb hello3.hrb hello4.hrb hello5.hrb winhelo.hrb winhelo2.hrb star1.hrb stars.hrb lines.hrb
 crack.app : crack1.hrb crack2.hrb crack3.hrb crack4.hrb crack5.hrb
 bug.app : bug1.hrb bug2.hrb bug3.hrb
 ## 汇编语言
@@ -115,9 +115,11 @@ haribote.img : ipl10.bin haribote.sys app Makefile
 		copy from:target/hello3.hrb to:@: \
 		copy from:target/hello4.hrb to:@: \
 		copy from:target/hello5.hrb to:@: \
-		copy from:target/bug1.hrb to:@: \
-		copy from:target/bug2.hrb to:@: \
-		copy from:target/bug3.hrb to:@: \
+		copy from:target/winhelo.hrb to:@: \
+		copy from:target/winhelo2.hrb to:@: \
+		copy from:target/star1.hrb to:@: \
+		copy from:target/stars.hrb to:@: \
+		copy from:target/lines.hrb to:@: \
 		copy from:source/ipl10.nas to:@: \
 		copy from:make.bat to:@: \
 		imgout:target/haribote.img

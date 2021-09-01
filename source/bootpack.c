@@ -93,6 +93,7 @@ void HariMain(void) {
     struct LAYER *layer_back, *layer_mouse, *layer_window, *layer_window_b[3], *layer_console;
     unsigned char *buf_back, buf_mouse[256], *buf_window, *buf_window_b, *buf_console;
     layerctl = layerctl_init(mng, bootinfo->vram, bootinfo->screenx, bootinfo->screeny); // 初始化图层管理
+    *((int *) 0x0fe4) = (int) layerctl; // 将图层管理器地址放入0xfe4, 便于app调用系统api
     // 背景图层
     layer_back = layer_alloc(layerctl); // 新建背景图层
     buf_back = (unsigned char *) memory_alloc_4k(mng, bootinfo->screenx * bootinfo->screeny); // 背景图层内容地址
@@ -199,13 +200,14 @@ void HariMain(void) {
     layer_slide(layer_window_b[1], 8, 116); // 移动窗口图层
     layer_slide(layer_window_b[2], 168, 116); // 移动窗口图层
     layer_slide(layer_console, 32, 176); // 移动窗口图层
+    // 实际图层高度由已有图层决定, 而不是指定值, 相同高度, 后者更低
     layer_updown(layer_back, 0); // 切换背景图层高度
-    layer_updown(layer_mouse, 5); // 切换鼠标图层高度
-    layer_updown(layer_window, 1); // 切换窗口图层高度
-    layer_updown(layer_window_b[0], 1); // 切换窗口图层高度
-    layer_updown(layer_window_b[1], 1); // 切换窗口图层高度
-    layer_updown(layer_window_b[2], 1); // 切换窗口图层高度
-    layer_updown(layer_console, 1); // 切换窗口图层高度
+    layer_updown(layer_console, 1); // 切换窗口图层高度(实际图层5)
+    layer_updown(layer_window, 1); // 切换窗口图层高度(实际图层4)
+    layer_updown(layer_window_b[0], 1); // 切换窗口图层高度(实际图层3)
+    layer_updown(layer_window_b[1], 1); // 切换窗口图层高度(实际图层2)
+    layer_updown(layer_window_b[2], 1); // 切换窗口图层高度(实际图层1)
+    layer_updown(layer_mouse, 9); // 切换鼠标图层高度(实际图层6)
 
 // 键盘和鼠标输入处理
     for (;;) {

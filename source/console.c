@@ -411,7 +411,7 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
             set_segmdesc(gdt + 1003, fileinfo->size - 1, (int) p, AR_CODE32_ER + 0x60);
             // 将app数据段注册到GDT, 段号1004, 大小segment_size, 段属性加上0x60, 将段设置成应用程序专用段
             char *q = (char *) memory_alloc_4k(mng, segment_size);
-            *((int *) 0xfe8) = (int) q; // 将app数据段起始地址放入0x0fe8中, 便于app调用系统API
+            *((int *) 0x0fe8) = (int) q; // 将app数据段起始地址放入0x0fe8中, 便于app调用系统API
             set_segmdesc(gdt + 1004, segment_size - 1, (int) q, AR_DATA32_RW + 0x60);
             // 将hrb文件的数据部分复制到数据段(存放在堆栈后面, 因此形成: 数据段=栈+hrb文件数据)
             int i;
@@ -423,11 +423,12 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
             // C语言编写的app需要跳转到.hrb文件0x1b位置(该位置为JMP指令, 会再次跳转到真正的app启动点)
             start_app(0x1b, 1003 * 8, esp, 1004 * 8, &(task->tss.esp0));
             // 新版本使用了RETF来调用app函数, app不能再使用far-RET回应, 而是直接调用asm_end_app结束程序直接返回到此处
+            // 释放app数据段内存
             memory_free_4k(mng, (int) q, segment_size); // 释放内存
         } else {
             console_putstr0(console, ".hrb file format error.\n");
         }
-        // 释放内存
+        // 释放app代码段内存
         memory_free_4k(mng, (int) p, fileinfo->size);
         
         console_newline(console);
@@ -442,26 +443,82 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
     - edx: 根据此值来判断调用哪个函数
 */
 int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax) {
+    // app数据段起始地址, 此处从0x0fe8获取, 系统运行app时, 已将数据段起始地址放入0x0fe8
+    int ds_base = *((int *) 0x0fe8);
     // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
     struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
-    // app数据段起始地址, 此处从0x0fe8获取, 系统运行app时, 已将数据段起始地址放入0x0fe8
-    int cs_base = *((int *) 0xfe8);
-    /* 
-        根据edx的值来判断调用哪个函数
-        1: 显示单个字符
-        2: 显示字符串(以0结尾)
-        3: 显示字符串(指定长度)
-        4: 结束app
+    /*
+        返回值给app
+        api执行两次PUSHAD(顺序:EDI,ESI,EBP,ESP,EBX,EDX,ECX,EAX), 第一次是调用函数前保存寄存器的值, 第二次是往栈存入参数.
+        返回值时, 第二次PUSH的值直接丢弃, 第一次PUSHAD值将会POPAD, 因此app就可以通过寄存器值获取返回值
+        此函数的参数为api第二次PUSHAD, 此处要获取第一次PUSHAD的寄存器地址, 根据栈往低位入栈, 因此需要获取高位地址
     */
+    int *reg = &eax + 1; // reg[0~7]对应寄存器:EDI,ESI,EBP,ESP,EBX,EDX,ECX,EAX
+    /* 根据edx的值来判断调用哪个函数 */
     if (edx == 1) {
+        /* 1: 显示单个字符 */
         console_putchar(console, eax & 0xff, 1); // eax存放character参数, (eax & 0xff)只保留低8位, 高位全部置0
     } else if (edx == 2) {
-        console_putstr0(console, (char *) ebx + cs_base); // ebx传入的是在app数据段中的相对地址, 加上cs_base(段起始地址)得到准确地址
+        /* 2: 显示字符串(以0结尾) */
+        console_putstr0(console, (char *) ebx + ds_base); // ebx传入的是在app数据段中的相对地址, 加上段起始地址得到准确地址
     } else if (edx == 3) {
-        console_putstr1(console, (char *) ebx + cs_base, ecx); // ebx传入的是在app数据段中的相对地址, 加上cs_base(段起始地址)得到准确地址
+        /* 3: 显示字符串(指定长度) */
+        console_putstr1(console, (char *) ebx + ds_base, ecx); // ebx传入的是在app数据段中的相对地址, 加上段起始地址得到准确地址
     } else if (edx == 4) {
+        /* 4: 结束app */
         struct TASK *task = task_current();
         return &(task->tss.esp0); // tss.esp0的地址, start_app()时将操作系统的ESP和段号入栈该esp0, 此时还原(ss:esp), 使指令回到cmd_app(), 从而结束app
+    } else if (edx == 5) {
+        /* 5: 显示窗口(edx:5,ebx:窗口图层地址,esi:窗口宽度,edi:窗口高度,eax:窗口颜色和透明度,ecx:窗口标题,返回值放入eax) */
+        // 新建图层
+        struct LAYERCTL *layerctl = (struct LAYERCTL *) *((int *) 0x0fe4); // 图层控制器地址, 操作系统启动时已将地址放入了0x0fe4
+        struct LAYER *layer = layer_alloc(layerctl);
+        layer_init(layer, (char *) ebx + ds_base, esi, edi, eax);
+        // 新建窗口
+        make_window8((char *) ebx + ds_base, esi, edi, (char *) ecx + ds_base, 0);
+        // 显示图层
+        layer_slide(layer, 100, 50);
+        layer_updown(layer, 6);
+        // 返回值
+        reg[7] = (int) layer; // 只返回图层地址到EAX寄存器(返回值默认为eax寄存器)
+    } else if (edx == 6) {
+        /* 6: 窗口显示字符串(edx:6,ebx:窗口图层地址,esi:显示的x坐标,edi:显示的y坐标,eax:颜色,ecx:字符长度,ebp:字符串) */
+        struct LAYER *layer = (struct LAYER *) ebx;
+        putfonts8_asc(layer->buf, layer->bxsize, esi, edi, eax, (char *) ebp + ds_base);
+        layer_refresh(layer, esi, edi, esi + ecx * 8, edi + 16);
+    } else if (edx == 7) {
+        /* 7: 窗口显示方块(edx:7,ebx:窗口图层地址,eax:x0,ecx:y0,esi:x1,edi:y1,ebp:颜色) */
+        struct LAYER *layer = (struct LAYER *) ebx;
+        boxfill8(layer->buf, layer->bxsize, ebp, eax, ecx, esi, edi);
+        layer_refresh(layer, eax, ecx, esi + 1, edi + 1);
+    } else if (edx == 8) {
+        /* 8: 初始化app内存控制器(edx:8,ebx:内存控制器地址,eax:管理的内存空间起始地址,ecx:管理的内存空间字节数) */
+        memmng_init((struct MEMMNG *) (ebx + ds_base)); // app内存控制器
+        ecx &= 0xfffffff0; // 向下取整(0x10为单位)
+        memory_free((struct MEMMNG *) (ebx + ds_base), eax, ecx); // 释放app内存(起始位置和大小都由hrb文件头(0x0020,0x0000)决定)
+    } else if (edx == 9) {
+        /* 9: 分配指定大小的内存(edx:9,ebx:内存控制器地址,eax:分配的内存空间起始地址,ecx:分配的内存空间字节数) */
+        ecx = (ecx + 0x0f) & 0xfffffff0; // 向上取整(0x10为单位)
+        reg[7] = memory_alloc((struct MEMMNG *) (ebx + ds_base), ecx);
+    } else if (edx == 10) {
+        /* 10: 释放指定起始地址和大小的内存(edx:10,ebx:内存控制器地址,eax:释放的内存空间起始地址,ecx:释放的内存空间字节数) */
+        ecx = (ecx + 0x0f) & 0xfffffff0; // 向上取整(0x10为单位)
+        memory_free((struct MEMMNG *) (ebx + ds_base), eax, ecx);
+    } else if (edx == 11) {
+        /* 11: 在窗口中画点(edx:11,ebx:窗口图层地址,esi:x坐标,edi:y坐标,eax:颜色) */
+        struct LAYER *layer = (struct LAYER *) ebx;
+        layer->buf[layer->bxsize * edi + esi] = eax;
+    } else if (edx == 12) {
+        /* 12: 窗口图层刷新(edx:12,ebx:窗口图层地址,eax:x0,ecx:y0,esi:x1,edi:y1) */
+        struct LAYER *layer = (struct LAYER *) ebx;
+        layer_refresh(layer, eax, ecx, esi, edi);
+    } else if (edx == 13) {
+        /* 13: 窗口绘制直线(edx:13,ebx:窗口图层地址,eax:x0,ecx:y0,esi:x1,edi:y1,ebp:颜色) */
+        struct LAYER *layer = (struct LAYER *) ebx;
+        api_linewin(layer, eax, ecx, esi, edi, ebp);
+    } else if (edx == 14) {
+        /* 14: 关闭窗口图层(edx:14,ebx:窗口图层地址) */
+        layer_free((struct LAYER *) ebx);
     }
     return 0;
 }
@@ -506,4 +563,53 @@ int *inthandler0c(int *esp) {
     // 强制结束app
     struct TASK *task = task_current();
     return &(task->tss.esp0); // tss.esp0地址在start_app()时将操作系统的ESP和段号入栈, 此时还原, 使指令回到cmd_app(), 从而结束app
+}
+
+/*
+    在窗口绘制直线
+    - layer: 窗口所在的图层地址
+    - x0,y0,x1,y1: 直线两端的坐标
+    - col: 颜色
+*/
+void api_linewin(struct LAYER *layer, int x0, int y0, int x1, int y1, int col) {
+    /* 长边坐标递增1, 短边坐标递增(短边变化量加1/长边变化量加1) */
+    // 判断长短边
+    int dx = x1 - x0;
+    int dy = y1 - y0;
+    if (dx < 0) {
+        dx = -dx; // 变化量绝对值
+    }
+    if (dy < 0) {
+        dy = -dy; // 变化量绝对值
+    }
+    int len;
+    if (dx >= dy) {
+        // 长边为x轴
+        len = dx + 1;
+        dy = ((dy + 1) << 10) / (dx + 1); // 坐标放大1024倍, 后续再缩小1024倍, 实现小数效果
+        dx = 1 << 10; // 坐标放大1024倍, 后续再缩小1024倍, 实现小数效果
+    } else {
+        // 长边为y轴
+        len = dy + 1;
+        dx = ((dx + 1) << 10) / (dy + 1); // 坐标放大1024倍, 后续再缩小1024倍, 实现小数效果
+        dy = 1 << 10; // 坐标放大1024倍, 后续再缩小1024倍, 实现小数效果;
+    }
+    // 判断方向
+    if(x0 > x1) {
+        dx = -dx;
+    }
+    if(y0 > y1) {
+        dy = -dy;
+    }
+    // 绘制直线
+    int x = x0 << 10; // 坐标放大1024倍, 后续再缩小1024倍, 实现小数效果
+    int y = y0 << 10; // 坐标放大1024倍, 后续再缩小1024倍, 实现小数效果
+
+    int i;
+    for (i = 0; i < len; i++) {
+        layer->buf[(y >> 10) * layer->bxsize + (x >> 10)] = col; // 坐标缩小1024倍, 实现小数效果
+        x += dx;
+        y += dy;
+    }
+    return;
 }

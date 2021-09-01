@@ -221,7 +221,7 @@ int mouse_decode(struct MOUSE_DEC *mdec, unsigned char data);
 /* memory.c */
 
 #define MEMMNG_ADDR     0x003c0000; // 内存管理表起始地址
-#define MEMMNG_SIZE     4096 // 空闲内存信息总数: 使用4096个FREEINFO结构记录空闲内存信息
+#define MEMMNG_SIZE     4090 // 空闲内存信息总数: 使用4090个FREEINFO结构记录空闲内存信息
 /*
     内存空闲信息结构体
     使用8字节记录某一段空闲内存地址起点和大小
@@ -237,7 +237,7 @@ struct MEMMNG {
     int maxrows;     // row最大值
     int lostsize;   // 内存空闲信息条数溢出, 导致内存释放失败的内存大小总和
     int lostrows;    // 内存空闲信息条数溢出, 导致内存释放失败次数
-    struct FREEINFO freeinfo[MEMMNG_SIZE]; // 内存空闲信息, 使用4096个FREEINFO结构记录空闲内存
+    struct FREEINFO freeinfo[MEMMNG_SIZE]; // 内存空闲信息, 使用4090个FREEINFO结构记录空闲内存
 };
 unsigned int memtest(unsigned int start, unsigned int end);
 void memmng_init(struct MEMMNG  *mng);
@@ -420,6 +420,7 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline);
 int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
 int *inthandler0d(int *esp);
 int *inthandler0c(int *esp);
+void api_linewin(struct LAYER *layer, int x0, int y0, int x1, int y1, int col);
 
 /* file.c */
 /*

@@ -401,10 +401,12 @@ void putfonts8_asc_layer(struct LAYER *layer, int x, int y, int color, int backc
     - layer: 控制台所在的图层
     - cursr_x, cursor_y: 控制台光标在控制台图层中x, y轴的坐标
     - cursor_color: 控制台光标颜色
+    - timer: 控制台光标闪烁定时器
 */
 struct CONSOLE {
     struct LAYER *layer;
     int cursor_x, cursor_y, cursor_color;
+    struct TIMER *timer;
 };
 void console_task(struct LAYER *layer_back, unsigned int memorytotal);
 void console_putchar(struct CONSOLE *console, int character, char move);

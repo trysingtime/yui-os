@@ -21,10 +21,9 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
     int fifobuf[128];
     fifo32_init(&task->fifo, 128, fifobuf, task); // 中断到来自动唤醒task
     /* 设置定时器 */
-    struct TIMER *timer;
-    timer = timer_alloc(); // 光标闪烁定时器
-    timer_init(timer, &task->fifo, 1);
-    timer_settime(timer, 50); // 0.05s
+    console.timer = timer_alloc(); // 光标闪烁定时器
+    timer_init(console.timer, &task->fifo, 1);
+    timer_settime(console.timer, 50); // 0.05s
 
     /* 获取FAT信息, 用于文件相关的命令 */
     struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
@@ -52,17 +51,17 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
                 // 光标闪烁定时器
                 // 若为0则显示黑色, 若为1则显示白色, 交替进行, 实现闪烁效果
                 if (i != 0)  {
-                    timer_init(timer, &task->fifo, 0);
+                    timer_init(console.timer, &task->fifo, 0);
                     if (console.cursor_color >= 0) {
                         console.cursor_color = COL8_FFFFFF;
                     }
                 } else{
-                    timer_init(timer, &task->fifo, 1);
+                    timer_init(console.timer, &task->fifo, 1);
                     if (console.cursor_color >= 0) {
                         console.cursor_color = COL8_000000;
                     }
                 }
-                timer_settime(timer, 50); // 再次倒计时0.5s
+                timer_settime(console.timer, 50); // 再次倒计时0.5s
             }
             // 窗口是否激活
             if (i == 2) {
@@ -422,7 +421,8 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
             struct TASK *task = task_current();
             // C语言编写的app需要跳转到.hrb文件0x1b位置(该位置为JMP指令, 会再次跳转到真正的app启动点)
             start_app(0x1b, 1003 * 8, esp, 1004 * 8, &(task->tss.esp0));
-            // 新版本使用了RETF来调用app函数, app不能再使用far-RET回应, 而是直接调用asm_end_app结束程序直接返回到此处
+            /* 正常返回: 新版本使用了RETF来调用app函数, app不能再使用far-RET回应, 而是直接调用asm_end_app结束程序直接返回到此处 */
+            /* 强制返回: Shift + F1 组合键强制结束app也会返回此处 */
             // 释放app数据段内存
             memory_free_4k(mng, (int) q, segment_size); // 释放内存
         } else {
@@ -519,6 +519,42 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
     } else if (edx == 14) {
         /* 14: 关闭窗口图层(edx:14,ebx:窗口图层地址) */
         layer_free((struct LAYER *) ebx);
+    } else if (edx == 15) {
+        /* 15: 获取键盘输入(edx:15,eax:是否休眠等待至键盘输入(1: 休眠直到键盘输入, 0: 不休眠返回-1)), 返回值放入eax*/
+        struct TASK *task = task_current();
+        for(;;) {
+            io_cli();
+            if (fifo32_status(&task->fifo) == 0) {
+                // 是否休眠等待至键盘输入(1: 休眠直到键盘输入, 0: 不休眠返回-1)
+                if (eax != 0) {
+                    task_sleep(task);
+                } else {
+                    io_sti();
+                    reg[7] = -1; // 返回给app的值
+                    return 0;
+                }
+            }
+            int i = fifo32_get(&task->fifo);
+            io_sti();
+            if (i <= 1) {
+                /* 光标定时器 */
+                timer_init(console->timer, &task->fifo, 1); // app运行时不需要显示光标
+                timer_settime(console->timer, 50);
+            }
+            if (i == 2) {
+                // 窗口已激活, 光标闪烁
+                console->cursor_color = COL8_FFFFFF;
+            }
+            if (i == 3) {
+                // 窗口未激活, 光标停止闪烁
+                console->cursor_color = -1;
+            }
+            if (256 <= i && i <= 511) {
+                /* 键盘数据 */
+                reg[7] = i - 256; // 返回给app的值
+                return 0;
+            }
+        }
     }
     return 0;
 }

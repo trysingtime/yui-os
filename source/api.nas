@@ -6,10 +6,11 @@
 [FILE "api.nas"]                   ; 源文件名
         ; 函数名
         GLOBAL _api_putchar, _api_putstr0
+        GLOBAL _api_end
         GLOBAL _api_openwin, _api_refreshwin, _api_closewin
         GLOBAL _api_putstrwin, _api_boxfillwin, _api_point, _api_linewin
         GLOBAL _api_initmalloc, _api_malloc, _api_free
-        GLOBAL _api_end
+        GLOBAL _api_getkey
 
 [SECTION .text]             ; 目标文件中写了这些之后再写程序
 
@@ -185,4 +186,11 @@ _api_closewin:          ; void api_closewin(int win);
         MOV             EBX,[ESP+8]
         INT             0x40
         POP             EBX
+        RET
+
+; 获取键盘输入(edx:15,eax:是否休眠等待至键盘输入)
+_api_getkey:            ; int api_getkey(int mode);
+        MOV             EDX,15
+        MOV             EAX,[ESP+4]             ; 1: 休眠直到键盘输入, 0: 不休眠返回-1
+        INT             0x40
         RET

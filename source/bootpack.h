@@ -257,7 +257,7 @@ int memory_free_4k(struct MEMMNG *mng, unsigned int addr, unsigned int size);
     - vx0, v0: 图层坐标
     - col_inv: color(颜色)和invisible(透明度)
     - height: 图层高度
-    - flags: 图层已使用标识
+    - flags: 图层使用标识(0:未使用,1:正在使用,0x10(bit4):窗口程序-app,0x20(bit5):窗口程序-console)
     - ctl: 图层控制器地址
     - task: 图层所属的task地址
 */
@@ -394,6 +394,7 @@ void task_sleep(struct TASK *task);
 
 void make_window8(unsigned char *buf, int xsize, int ysize, char *title, char active);
 void make_title8(unsigned char *buf, int xsize, char *title, char active);
+void change_title8(struct LAYER *layer, char active);
 void make_textbox8(struct LAYER *layer, int x0, int y0, int sx, int sy, int c);
 void putfonts8_asc_layer(struct LAYER *layer, int x, int y, int color, int backcolor, char *string, int length);
 

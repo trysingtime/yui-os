@@ -81,6 +81,48 @@ void make_title8(unsigned char *buf, int xsize, char *title, char active) {
 }
 
 /*
+    切换窗口标题栏颜色
+    - 仅切换窗口标题栏字体颜色和背景颜色, 其他颜色不变
+    - layer: 指定的窗口图层
+    - active: 激活/反激活窗口(0: 反激活, 1: 激活)
+*/
+void change_title8(struct LAYER *layer, char active) {
+    /* 若窗口激活则标题栏从暗灰转为暗青, 否则则从暗青转为暗灰 */
+    char old_title_color, old_title_backgroud_color; // 旧颜色
+    char new_title_color, new_title_backgroud_color; // 新颜色
+    if (active != 0) {
+        old_title_color = COL8_C6C6C6;
+        old_title_backgroud_color = COL8_848484;        
+        new_title_color = COL8_FFFFFF;
+        new_title_backgroud_color = COL8_000084;
+    } else {
+        old_title_color = COL8_FFFFFF;
+        old_title_backgroud_color = COL8_000084;        
+        new_title_color = COL8_C6C6C6;
+        new_title_backgroud_color = COL8_848484;
+    }
+
+    // 遍历标题栏所有像素点, 找到所有"旧颜色"替换成"新颜色", 其他颜色不变
+    int x, y;
+    for (y = 3; y <= 20; y++) {
+        for (x = 3; x <= layer->bxsize - 4; x++) {
+            int color = layer->buf[y * layer->bxsize + x]; // 原有颜色
+            if (x <= layer->bxsize - 22 && color == old_title_color) {
+                // 替换标题文字颜色
+                color = new_title_color;
+            } else if (color == old_title_backgroud_color) {
+                // 替换标题背景颜色
+                color = new_title_backgroud_color;
+            }
+            layer->buf[y * layer->bxsize + x] = color;
+        }
+    }
+    // 刷新
+    layer_refresh(layer, 3, 3, layer->bxsize, 21);
+    return;
+}
+
+/*
     绘制文本框
     - layer: 指定图层
     - x0, y0: 文本框在图层中的坐标(左边和上边溢出3个像素, 右边和下边溢出2个像素)

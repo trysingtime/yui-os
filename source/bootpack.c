@@ -3,6 +3,8 @@
 
 #define KEYCMD_LED      0xed
 
+struct LAYER *switch_window(struct LAYERCTL *layerctl, struct LAYER *current_layer, struct LAYER *target_layer);
+
 void HariMain(void) {
     struct BOOTINFO *bootinfo = (struct BOOTINFO *)0x0ff0; // 获取asmhead.nas中存入的bootinfo信息
     char s[40];
@@ -28,7 +30,7 @@ void HariMain(void) {
 		0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
 		0,   0,   0,   '_', 0,   0,   0,   0,   0,   0,   0,   0,   0,   '|', 0,   0
 	};
-    int currentwindow = 0, key_shift = 0, key_leds = (bootinfo->leds >> 4) & 7;
+    int key_shift = 0, key_leds = (bootinfo->leds >> 4) & 7;
 
 // 设置系统参数
     init_gdtidt(); // 初始化GDT/IDT
@@ -56,6 +58,7 @@ void HariMain(void) {
     init_keyboard(&fifo, 256); // 初始化键盘控制电路(包含鼠标控制电路)
     struct MOUSE_DEC mdec;
     enable_mouse(&fifo, 512, &mdec); // 启用鼠标本身
+    int mmx = -1, mmy = -1; // 初始化鼠标移动模式: -1: 通常模式, >0: 窗口移动模式
 
 // 初始化键盘锁定键LED状态(CapsLock, NumLock, ScrollLock)
 /*
@@ -121,6 +124,7 @@ void HariMain(void) {
     layer_window = layer_alloc(layerctl); // 新建窗口图层
     buf_window = (unsigned char *) memory_alloc_4k(mng, 160 * 52);
     layer_init(layer_window, buf_window, 144, 52, -1); // 初始化窗口图层
+    layer_window->flags |= 0x20; // 标记为窗口程序-console(0x10(bit4):窗口程序-app,0x20(bit5):窗口程序-console)
     make_window8(buf_window, 144, 52, "task_a", 1); // 绘制窗口
     // 绘制窗口图层-文本框
     make_textbox8(layer_window, 8, 28, 144, 16, COL8_FFFFFF);
@@ -135,7 +139,10 @@ void HariMain(void) {
 
     // 主任务
     task_run(task_a, 1, 0); // 更新task_a的层级信息为1
-    fifo.task = task_a; // 若task_a休眠时有中断, 则唤醒task_a
+    int task_a_fifo[128];
+    fifo32_init(&task_a->fifo, 128, task_a_fifo, 0); // task_a缓冲区
+    fifo.task = task_a; // 通用缓冲区fifo绑定任务(若task_a休眠时有中断输入fifo, 则唤醒task_a)
+    layer_window->task = task_a; // 图层绑定任务(任务被关闭图层也将被关闭)
 
     // 任务B(多窗口任务)
     int i;
@@ -170,6 +177,7 @@ void HariMain(void) {
     layer_console = layer_alloc(layerctl);
     buf_console = (unsigned char *) memory_alloc_4k(mng, 256 * 165);
     layer_init(layer_console, buf_console, 256, 165, -1);
+    layer_console->flags |= 0x20; // 标记为窗口程序-console(0x10(bit4):窗口程序-app,0x20(bit5):窗口程序-console)
     make_window8(buf_console, 256, 165, "console", 0);
     make_textbox8(layer_console, 8, 28, 240, 128, COL8_000000);
     // 控制台任务
@@ -191,6 +199,8 @@ void HariMain(void) {
     task_console->tss.esp -= 4; // 方法调用时返回地址保存在栈顶[ESP], 第一个参数保存在[ESP+4], 因此为了伪造方法调用, 压栈4字节
     // 启动任务
     task_run(task_console, 2, 2); // task层级为2, 优先级为2
+    // 图层绑定任务(绑定后任务被关闭图层也将被关闭)
+    layer_console->task = task_console;
 
 // 显示图层
     layer_slide(layer_back, 0, 0); // 移动背景图层
@@ -209,6 +219,10 @@ void HariMain(void) {
     layer_updown(layer_window_b[2], 1); // 切换窗口图层高度(实际图层1)
     layer_updown(layer_mouse, 9); // 切换鼠标图层高度(实际图层6)
 
+// 窗口图层控制
+    struct LAYER *mouse_click_layer = 0; // 鼠标输入的窗口图层
+    struct LAYER *keyboard_input_layer = layer_window; // 键盘输入的窗口图层
+
 // 键盘和鼠标输入处理
     for (;;) {
         /* 键盘LEDS控制缓冲区处理 */
@@ -217,6 +231,13 @@ void HariMain(void) {
             keycmd_wait = fifo32_get(&keycmd);
             wait_KBC_sendready();
             io_out8(PORT_KEYDAT, keycmd_wait);
+        }
+
+        /* task_a缓冲区 */
+        if(fifo32_status(&task_a->fifo) > 0) {
+            // 将数据转发到通用缓冲区
+            i = fifo32_get(&task_a->fifo);
+            fifo32_put(&fifo, i);
         }
 
         /* 中断缓冲区处理 */
@@ -230,6 +251,11 @@ void HariMain(void) {
             // 缓冲区存在信息
             i = fifo32_get(&fifo);
             io_sti();
+            // 若当前键盘输入窗口被关闭, 则切换键盘输入的窗口
+            if (keyboard_input_layer->flags == 0) {
+                switch_window(layerctl, keyboard_input_layer, 0);
+            }
+            // 输入处理
             if (256 <= i && i <= 511) {
                 // 键盘缓冲区处理
                 /* 显示键盘数据 */
@@ -256,62 +282,43 @@ void HariMain(void) {
                 /* 不同字符编码处理 */
                 if (s[0] != 0) {
                     /* 普通字符 */
-                    if (currentwindow == 0) {
-                        // 当前任务窗口, 直接显示
+                    if (keyboard_input_layer == layer_window) {
+                        // 键盘输入窗口为layer_window: 直接显示
                         if (cursor_x < 128) {
                             s[1] = 0;
                             putfonts8_asc_layer(layer_window, cursor_x, 28, COL8_000000, COL8_FFFFFF, s, 1); // 显示键盘按键
                             cursor_x += 8; // 光标前移
                         }
-                    } else {
-                        // 不同任务窗口, 发送到该任务绑定的中断缓冲区
+                    }
+                    if (keyboard_input_layer == layer_console) {
+                        // 键盘输入窗口为layer_console: 发送键盘字符到该任务绑定的中断缓冲区
                         fifo32_put(&task_console->fifo, s[0] + 256); // 发送对应键盘字符的ASCII
                     }
                 }
                 if (i == 256 + 0x0e) {
                     /* 退格键 */
-                    if (currentwindow == 0) {
-                        // 当前任务窗口, 直接显示
+                    if (keyboard_input_layer == layer_window) {
+                        // 键盘输入窗口为layer_window: 直接显示
                         if (cursor_x > 8) {
                             putfonts8_asc_layer(layer_window, cursor_x, 28, COL8_000000, COL8_FFFFFF, " ", 1); // 擦除显示的键盘按键
                             cursor_x -= 8; // 光标后移
                         }
-                    } else {
-                        // 不同任务窗口, 发送到该任务绑定的中断缓冲区
+                    }
+                    if (keyboard_input_layer == layer_console) {
+                        // 键盘输入窗口为layer_console: 发送键盘字符到该任务绑定的中断缓冲区
                         fifo32_put(&task_console->fifo, 8 + 256); // 发送对应键盘字符的ASCII, ASCII中空格为8
                     }
                 }
                 if (i == 256 + 0x1c) {
                     /* 回车键 */
-                    if (currentwindow != 0) {
+                    if (keyboard_input_layer == layer_console) {
+                        // 键盘输入窗口为layer_console: 发送键盘字符到该任务绑定的中断缓冲区
                         fifo32_put(&task_console->fifo, 10 + 256); // 发送对应键盘字符的ASCII
                     }
                 }
                 if (i == 256 + 0x0f) {
-                    /* TAB键 */
-                    if (currentwindow == 0) {
-                        currentwindow = 1;
-                        // 标题栏切换
-                        make_title8(buf_window, layer_window->bxsize, "task_a", 0);
-                        make_title8(buf_console, layer_console->bxsize, "console", 1);
-                        // 主窗口光标停止闪烁, 此处标志, 后续处理
-                        cursor_c = -1;
-                        // 主窗口隐藏光标(显示成背景色白色)
-                        boxfill8(layer_window->buf, layer_window->bxsize, COL8_FFFFFF, cursor_x, 28, cursor_x + 7, 43);
-                        // 目标窗口光标开始闪烁
-                        fifo32_put(&task_console->fifo, 2);
-                    } else {
-                        currentwindow = 0;
-                        // 标题栏切换
-                        make_title8(buf_window, layer_window->bxsize, "task_a", 1);
-                        make_title8(buf_console, layer_console->bxsize, "console", 0);
-                        // 主窗口光标闪烁, 此处标志, 后续处理
-                        cursor_c = COL8_000000;
-                        // 目标窗口光标停止闪烁
-                        fifo32_put(&task_console->fifo, 3);                        
-                    }
-                    layer_refresh(layer_window, 0 ,0, layer_window->bxsize, 21);
-                    layer_refresh(layer_console, 0 ,0, layer_console->bxsize, 21);
+                    /* TAB键: 切换窗口图层 */
+                    keyboard_input_layer = switch_window(layerctl, keyboard_input_layer, 0);
                 }
                 /* Shitf键处理: 左Shift按下置1, 右Shift按下置2, 两个按下置3, 两个都不按置0 */
                 if (i == 256 + 0x2a) {
@@ -352,6 +359,14 @@ void HariMain(void) {
                     fifo32_put(&keycmd, KEYCMD_LED);
                     fifo32_put(&keycmd, key_leds);                    
                 }
+                if (i == 256 + 0x57) {
+                    /* F11按键: 切换窗口 */
+                    /* 存在2个以上的图层(包括背景图层和鼠标图层)才能切换 */
+                    if (layerctl->top > 2) {
+                        // 倒数第二层提升到正数第二层(最底层是背景图层, 最高层是鼠标图层, 都不用变动)
+                        layer_updown(layerctl->layersorted[1], layerctl->top - 1);
+                    }
+                }
                 if (i == 256 + 0x3b && key_shift !=0) {
                     /* Shitf+F1组合键处理: 强制结束app */
                     // 强制结束app时检查tss.ss0, 若为0则代表app未运行, 不能再次结束app.(启动app时会将操作系统段号放入tss.ss0, 结束app时会将tss.ss0置为0)
@@ -365,7 +380,7 @@ void HariMain(void) {
                         // 通过修改tss.eip的值jmp到asm_end_app函数(强制结束app的函数)
                         task_console->tss.eax = (int) &(task_console->tss.esp0); // asm_end_app函数所需的参数
                         task_console->tss.eip = (int) asm_end_app; // 调用asm_end_app函数
-
+                        io_sti();
                     }
                 }
                 if (i == 256 + 0xfa) {
@@ -377,13 +392,6 @@ void HariMain(void) {
                     wait_KBC_sendready();
                     io_out8(PORT_KEYDAT, keycmd_wait);
                 }
-
-                // 重绘光标
-                // 是否显示光标
-                if (cursor_c >= 0) {
-                    boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示白色
-                }
-                layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
             } else if (512 <= i && i <= 767) {
                 // 鼠标缓冲区处理
                 if (mouse_decode(&mdec, i - 512) == 1) {
@@ -404,8 +412,8 @@ void HariMain(void) {
 
                     // 显示鼠标指针移动
                     // 计算鼠标x, y轴的数值, 基于屏幕中心点
-                    mx += mdec.x/3;
-                    my += mdec.y/3;
+                    mx += mdec.x/5;
+                    my += mdec.y/5;
                     // 防止鼠标超出屏幕
                     if (mx < 0) {
                         mx = 0;
@@ -421,14 +429,64 @@ void HariMain(void) {
                         my = bootinfo->screeny - 1;
                     }
                     // 显示鼠标坐标数据
-                    sprintf(s, "(%3d, %3d)", mx, my);
-                    putfonts8_asc_layer(layer_back, 0, 0, COL8_FFFFFF, COL8_008484, s, 10);
+                    sprintf(s, "(%3d, %3d, %3d)", mx, my, mouse_click_layer->height);
+                    putfonts8_asc_layer(layer_back, 0, 0, COL8_FFFFFF, COL8_008484, s, 30);
                     // 移动鼠标
                     layer_slide(layer_mouse, mx, my); // 显示鼠标
                     // 鼠标左键
                     if ((mdec.btn & 0x01) != 0) {
-                        // 移动窗口
-                        layer_slide(layer_window, mx - 80, my - 8);
+                        if (mmx < 0) {
+                            /* 窗口切换 */
+                            /* 从上到下遍历所有图层, 切换到鼠标点击的像素点所属的图层 */
+                            int j;
+                            for (j = layerctl->top - 1; j > 0; j--) {
+                                mouse_click_layer = layerctl->layersorted[j];
+                                int x = mx - mouse_click_layer->vx0; // 图层相对坐标x
+                                int y = my - mouse_click_layer->vy0; // 图层相对坐标y
+                                // 鼠标点击的像素点是否属于该图层
+                                if (0 <= x && x < mouse_click_layer->bxsize && 0 <= y && y < mouse_click_layer->bysize) {
+                                    // 鼠标点击的像素点是不是透明(跟图层背景颜色一致)
+                                    if (mouse_click_layer->buf[y * mouse_click_layer->bxsize + x] != mouse_click_layer->col_inv) {
+                                        layer_updown(mouse_click_layer, layerctl->top - 1);
+                                        if (mouse_click_layer != keyboard_input_layer) {
+                                            /* 鼠标点击的并非当前输入窗口: 输入窗口切换到被点击的窗口 */
+                                            keyboard_input_layer = switch_window(layerctl, keyboard_input_layer, mouse_click_layer);
+                                        }
+                                        if (3 <= x && x < mouse_click_layer->bxsize - 3 && 3 <= y && y < 21) {
+                                            /* 鼠标点击的是窗口标题栏: 进入窗口移动模式, 记录下移动前的坐标 */
+                                            // 移动窗口前的坐标 
+                                            mmx = mx;
+                                            mmy = my;
+                                        }
+                                        if (mouse_click_layer->bxsize - 21 <= x && x < mouse_click_layer->bxsize - 5 && 5 <= y && y < 19) {
+                                            /* 鼠标点击的是窗口关闭按钮"X"": 关闭窗口 */
+                                            if (mouse_click_layer->task!=0) {
+                                                /* 点击的是app窗口 */
+                                                // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
+                                                struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
+                                                // 打印信息
+                                                console_putstr0(console, "\nBreak(key) :\n");
+                                                // 改变TSS寄存器值时不能切换到其他任务
+                                                io_cli();
+                                                // 通过修改tss.eip的值jmp到asm_end_app函数(强制结束app的函数)
+                                                task_console->tss.eax = (int) &(task_console->tss.esp0); // asm_end_app函数所需的参数
+                                                task_console->tss.eip = (int) asm_end_app; // 调用asm_end_app函数
+                                                io_sti();
+                                            }
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                            /* 窗口移动 */
+                            layer_slide(mouse_click_layer, mouse_click_layer->vx0 + mx - mmx, mouse_click_layer->vy0 + my - mmy); // 当前坐标-移动前的坐标
+                            mmx = mx;
+                            mmy = my;
+                        }
+                    } else {
+                        /* 没有按下左键, 返回通常模式 */
+                        mmx = -1;
                     }
                 }
             } else if (i <= 1) {
@@ -450,7 +508,59 @@ void HariMain(void) {
                     boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示黑色
                     layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
                 }
+            } else if (i == 2) {
+                // 窗口已激活, 光标闪烁
+                cursor_c = COL8_000000;
+            } else if (i == 3) {
+                // 窗口未激活, 光标停止闪烁
+                cursor_c = -1;
+                // 隐藏光标(显示成背景色白色)
+                boxfill8(layer_window->buf, layer_window->bxsize, COL8_FFFFFF, cursor_x, 28, cursor_x + 7, 43);
             }
+            // 重绘光标
+            // 是否显示光标
+            if (cursor_c >= 0) {
+                boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示白色
+            }
+            layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
         }
     }
+}
+
+/*
+    切换窗口图层
+    - layerctl: 图层控制器
+    - current_layer: 当前窗口图层
+    - target_layer: 目标窗口图层(若为0则不指定图层, 自动使用下一图层)
+*/
+struct LAYER *switch_window(struct LAYERCTL *layerctl, struct LAYER *current_layer, struct LAYER *target_layer) {
+    // 旧窗口失去焦点
+    if (current_layer->flags != 0) {
+        // 切换窗口标题栏颜色
+        change_title8(current_layer, 0);
+        // 关闭光标
+        if ((current_layer->flags & 0x20) != 0) {
+            /* 当前窗口为"窗口程序-console", 存在光标, 需要关闭 */
+            fifo32_put(&current_layer->task->fifo, 3); // 通过中断fifo通知光标关闭
+        }
+    }
+    // 切换图层
+    if (target_layer == 0) {
+        /* 没有指定目标图层, 自动切换到下一图层 */
+        int i = current_layer->height - 1;
+        if (i == 0) {
+            i = layerctl->top - 1;
+        }
+        current_layer = layerctl->layersorted[i];
+    } else {
+        /* 指定了目标图层, 则直接使用 */
+        current_layer = target_layer;
+    }
+    // 新窗口获得焦点
+    change_title8(current_layer, 1);
+    if ((current_layer->flags & 0x20) != 0) {
+        /* 当前窗口为"窗口程序-console", 存在光标, 需要开启 */
+        fifo32_put(&current_layer->task->fifo, 2); // 通过中断fifo通知光标开启
+    }
+    return current_layer;
 }

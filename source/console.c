@@ -428,7 +428,8 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
             struct LAYERCTL *layerctl = (struct LAYERCTL *) *((int *) 0x0fe4); // 图层控制器地址, 操作系统启动时已将地址放入了0x0fe4
             for (i = 0; i < MAX_LAYERS; i++) {
                 struct LAYER *layer = &(layerctl->layers[i]);
-                if (layer->flags != 0 && layer->task == task) {
+                // 图层绑定到"task_console"且图层为正在使用(bit1=1)的"窗口程序-app"(bit4=1), 自动关闭该图层
+                if (layer->task == task && (layer->flags & 0x11) == 0x11) {
                     layer_free(layer);
                 }
             }
@@ -484,12 +485,13 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         struct LAYER *layer = layer_alloc(layerctl);
         // 将图层绑定到控制台task, app正常结束或强制结束后都会关闭所有绑定到控制台task的图层
         layer->task = task_current();
+        layer->flags |= 0x10; // 标记为窗口程序-app(0x10(bit4):窗口程序-app,0x20(bit5):窗口程序-console)
         layer_init(layer, (char *) ebx + ds_base, esi, edi, eax);
         // 新建窗口
         make_window8((char *) ebx + ds_base, esi, edi, (char *) ecx + ds_base, 0);
         // 显示图层
         layer_slide(layer, 100, 50);
-        layer_updown(layer, 6);
+        layer_updown(layer, layerctl->top - 1);
         // 返回值
         reg[7] = (int) layer; // 只返回图层地址到EAX寄存器(返回值默认为eax寄存器)
     } else if (edx == 6) {

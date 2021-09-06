@@ -188,7 +188,7 @@ _api_closewin:          ; void api_closewin(int win);
         POP             EBX
         RET
 
-; 获取键盘输入(edx:15,eax:是否休眠等待至键盘输入)
+; 获取键盘输入(edx:15,eax:是否休眠等待至键盘输入,返回值放入eax)
 _api_getkey:            ; int api_getkey(int mode);
         MOV             EDX,15
         MOV             EAX,[ESP+4]             ; 1: 休眠直到键盘输入, 0: 不休眠返回-1

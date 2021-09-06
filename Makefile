@@ -41,7 +41,7 @@ default :
 
 # 应用程序
 app : normal.app
-normal.app : a.hrb  hello4.hrb hello5.hrb winhelo2.hrb stars.hrb lines.hrb walk.hrb
+normal.app : a.hrb  hello4.hrb hello5.hrb winhelo2.hrb stars.hrb lines.hrb walk.hrb noodle.hrb
 crack.app : crack1.hrb crack2.hrb crack3.hrb crack4.hrb crack5.hrb
 bug.app : bug1.hrb bug2.hrb bug3.hrb
 ## 汇编语言
@@ -116,6 +116,7 @@ haribote.img : ipl10.bin haribote.sys app Makefile
 		copy from:target/stars.hrb to:@: \
 		copy from:target/lines.hrb to:@: \
 		copy from:target/walk.hrb to:@: \
+		copy from:target/noodle.hrb to:@: \
 		copy from:source/ipl10.nas to:@: \
 		copy from:make.bat to:@: \
 		imgout:target/haribote.img

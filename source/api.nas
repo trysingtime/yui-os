@@ -11,6 +11,7 @@
         GLOBAL _api_putstrwin, _api_boxfillwin, _api_point, _api_linewin
         GLOBAL _api_initmalloc, _api_malloc, _api_free
         GLOBAL _api_getkey
+        GLOBAL _api_alloctimer, _api_inittimer, _api_settimer, _api_freetimer
 
 [SECTION .text]             ; 目标文件中写了这些之后再写程序
 
@@ -188,9 +189,44 @@ _api_closewin:          ; void api_closewin(int win);
         POP             EBX
         RET
 
-; 获取键盘输入(edx:15,eax:是否休眠等待至键盘输入,返回值放入eax)
+; 获取键盘输入(edx:15,eax:是否休眠等待至中断输入,返回值放入eax)
 _api_getkey:            ; int api_getkey(int mode);
         MOV             EDX,15
-        MOV             EAX,[ESP+4]             ; 1: 休眠直到键盘输入, 0: 不休眠返回-1
+        MOV             EAX,[ESP+4]             ; 1: 休眠直到中断输入, 0: 不休眠返回-1
         INT             0x40
         RET
+
+; 获取定时器(edx:16,ebx:定时器地址,返回值放入eax)
+_api_alloctimer:        ; int api_alloctimer(void);
+        MOV             EDX,16
+        INT             0x40
+        RET
+
+; 设置定时器发送的数据(edx:17,ebx:定时器地址,eax:数据)
+_api_inittimer:         ; void api_inittimer(int timer, int data);
+        PUSH            EBX
+        MOV             EDX,17
+        MOV             EBX,[ESP+8]
+        MOV             EAX,[ESP+12]
+        INT             0x40
+        POP             EBX
+        RET
+
+; 设置定时器倒计时(edx:18,ebx:定时器地址,eax:时间(timeout/100s))
+_api_settimer:          ; void api_settimer(int timer, int time);
+        PUSH            EBX
+        MOV             EDX,18
+        MOV             EBX,[ESP+8]
+        MOV             EAX,[ESP+12]
+        INT             0x40
+        POP             EBX
+        RET
+
+; 释放定时器(edx:19,ebx:定时器地址)
+_api_freetimer:         ; void api_freetimer(int timer);
+        PUSH            EBX
+        MOV             EDX,19
+        MOV             EBX,[ESP+8]
+        INT             0x40
+        POP             EBX
+        RET        

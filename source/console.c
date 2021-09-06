@@ -433,6 +433,8 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
                     layer_free(layer);
                 }
             }
+            // 中止所有使用了控制台缓冲区的app定时器
+            timer_cannel_with_fifo(&task->fifo);
             // 释放app数据段内存
             memory_free_4k(mng, (int) q, segment_size); // 释放内存
         } else {
@@ -533,7 +535,7 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         /* 14: 关闭窗口图层(edx:14,ebx:窗口图层地址) */
         layer_free((struct LAYER *) ebx);
     } else if (edx == 15) {
-        /* 15: 获取键盘输入(edx:15,eax:是否休眠等待至键盘输入(1: 休眠直到键盘输入, 0: 不休眠返回-1)), 返回值放入eax*/
+        /* 15: 获取中断输入(edx:15,eax:是否休眠等待至中断输入(1: 休眠直到中断输入, 0: 不休眠返回-1)), 返回值放入eax*/
         struct TASK *task = task_current();
         for(;;) {
             io_cli();
@@ -567,7 +569,25 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
                 reg[7] = i - 256; // 返回给app的值
                 return 0;
             }
+            if (i > 511) {
+                /* 定时器数据 */
+                reg[7] = i - 256; // 返回给app的值
+                return 0;
+            }
         }
+    } else if (edx == 16) {
+        /* 获取定时器(edx:16,ebx:定时器地址,返回值放入eax) */
+        reg[7] = (int) timer_alloc();
+        ((struct TIMER *) reg[7])->isapp = 1; // 标识该定时器是否属于app(1:是,0:否. app结束同时中止定时器)
+    } else if (edx == 17) {
+        /* 设置定时器发送的数据(edx:17,ebx:定时器地址,eax:数据) */
+        timer_init((struct TIMER *) ebx, &task_current()->fifo, eax + 256);
+    } else if (edx == 18) {
+        /* 设置定时器倒计时(edx:18,ebx:定时器地址,eax:时间(timeout/100s)) */
+        timer_settime((struct TIMER *) ebx, eax);
+    } else if (edx == 19) {
+        /* 释放定时器(edx:19,ebx:定时器地址) */
+        timer_free((struct TIMER *) ebx);
     }
     return 0;
 }

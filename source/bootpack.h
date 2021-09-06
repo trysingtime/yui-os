@@ -298,11 +298,13 @@ void layer_free(struct LAYER *layer);
     - next: 下一个即将超时的定时器(链表结构)
     - timeout: 倒计时
     - flags: 定时器状态标识
+    - isapp: 标识该定时器是否属于app(1:是,0:否. app结束同时中止定时器)
     - fifo, data: 倒计时结束后往fifo缓冲区发送数据data
 */
 struct TIMER {
     struct TIMER *next;
-    unsigned int timeout, flags;
+    unsigned int timeout;
+    char flags, isapp;
     struct FIFO32 *fifo;
     int data;
 };
@@ -321,6 +323,8 @@ struct TIMERCTL {
 extern struct TIMERCTL timerctl;
 void init_pit(void);
 struct TIMER *timer_alloc(void);
+int timer_cancel(struct TIMER *timer);
+void timer_cannel_with_fifo(struct FIFO32 *fifo);
 void timer_free(struct TIMER *timer);
 void timer_init(struct TIMER *timer, struct FIFO32 *fifo, int data);
 void timer_settime(struct TIMER *timer, unsigned int timeout);

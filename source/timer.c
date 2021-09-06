@@ -69,10 +69,68 @@ struct TIMER *timer_alloc(void) {
     for (i = 0; i < MAX_TIMER; i++) {
         if (timerctl.timer[i].flags == TIMER_FLAGS_INACTIVE) {
             timerctl.timer[i].flags = TIMER_FLAGS_ALLOC;
+            timerctl.timer[i].isapp = 0; // 标识该定时器是否属于app(1:是,0:否. app结束同时中止定时器)
             return &timerctl.timer[i];
         }
     }
     return 0;
+}
+
+/*
+    中止指定的定时器
+    - timer: 指定的定时器
+*/
+int timer_cancel(struct TIMER *timer) {
+    int e = io_load_eflags();
+    io_cli();
+    struct TIMER *t;
+    if (timer->flags == TIMER_FLAGS_USING) {
+        // 从定时器链表中删除指定的定时器
+        if (timer == timerctl.nextnode) {
+            // 下一个将要触发的定时器就是要取消的定时器, 则直接跳过该定时器
+            t = timer->next;
+            timerctl.nextnode = t;
+            timerctl.nexttime = t->timeout;
+        } else {
+            // 从下一个将要触发的定时器开始遍历所有定时器, 找到要取消的定时器, 跳过它
+            t = timerctl.nextnode;
+            for(;;) {
+                if (t->next == timer) {
+                    break;
+                }
+                t = t->next;
+            }
+            t->next = timer->next;
+        }
+        // 定时器状态从"正在使用"修改为"已分配"
+        timer->flags = TIMER_FLAGS_ALLOC;
+        io_store_eflags(e);
+        return 1;
+    }
+    io_store_eflags(e);
+    return 0;
+}
+
+/*
+    中止所有使用了指定缓冲区的app定时器
+    - fifo: 定时器所使用的缓冲区(定时器触发时往此发送数据)
+*/
+
+void timer_cannel_with_fifo(struct FIFO32 *fifo) {
+    int e = io_load_eflags();
+    io_cli();
+    // 遍历所有定时器
+    int i;
+    for (i = 0; i < MAX_TIMER; i++) {
+        struct TIMER *t = &timerctl.timer[i];
+        if (t->flags !=0 && t->isapp != 0 && t->fifo == fifo) {
+            // 找到"正在使用+属于app+使用了指定缓存"的定时器, 中止这些定时器
+            timer_cancel(t);
+            timer_free(t);
+        }
+    }
+    io_store_eflags(e);
+    return;
 }
 
 /*

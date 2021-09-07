@@ -1,3 +1,4 @@
+/* 调用系统API使用定时器 */
 #include <stdio.h>
 int api_openwin(char *buf, int xsize, int ysize, int col_inv, char *title);
 void api_putstrwin(int win, int x, int y, int col, int len, char *str);

@@ -588,6 +588,22 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
     } else if (edx == 19) {
         /* 释放定时器(edx:19,ebx:定时器地址) */
         timer_free((struct TIMER *) ebx);
+    } else if (edx == 20) {
+        /* 蜂鸣器发声(edx:20,eax:声音频率(mHz, 4400000mHz = 440Hz, 频率为0标识停止发声)) */
+        int i;
+        if (eax == 0) {
+            // 停止发声
+            i = io_in8(0x61);
+            io_out8(0x61, i & 0x0d); // 蜂鸣器开关端口0x61(&0x0d: 关闭)
+        } else {
+            // 发声频率=主频/设定值, 8254芯片主频为1193180Hz, 因此设定值设为2712, 发声频率大约为440Hz
+            i = 1193180000 / eax;
+            io_out8(0x43, 0xb6); // 设定模式端口0x43
+            io_out8(0x42, i & 0xff); // 设定高音频率低8位
+            io_out8(0x42, i >> 8); // 设定高音频率高8位
+            i = io_in8(0x61);
+            io_out8(0x61, (i | 0x03) & 0x0f); // 蜂鸣器开关端口0x61(|0x03 &0x0f: 开启)
+        }
     }
     return 0;
 }

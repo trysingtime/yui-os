@@ -10,7 +10,7 @@
         GLOBAL _api_openwin, _api_refreshwin, _api_closewin
         GLOBAL _api_putstrwin, _api_boxfillwin, _api_point, _api_linewin
         GLOBAL _api_initmalloc, _api_malloc, _api_free
-        GLOBAL _api_getkey
+        GLOBAL _api_getkey, _api_beep
         GLOBAL _api_alloctimer, _api_inittimer, _api_settimer, _api_freetimer
 
 [SECTION .text]             ; 目标文件中写了这些之后再写程序
@@ -230,3 +230,10 @@ _api_freetimer:         ; void api_freetimer(int timer);
         INT             0x40
         POP             EBX
         RET        
+
+; 蜂鸣器发声(edx:20,eax:声音频率(mHz, 4400000mHz = 440Hz, 频率为0标识停止发声))
+_api_beep:              ; void api_beep(int tone);
+        MOV             EDX,20
+        MOV             EAX,[ESP+4]
+        INT             0x40
+        RET

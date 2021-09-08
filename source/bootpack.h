@@ -354,12 +354,16 @@ struct TSS32 {
     - priority: 任务优先级(任务切换间隔, 执行多少秒后切换到下一个任务, 单位: priority/100s)
     - fifo: 任务绑定的中断缓冲区
     - tss: TSS结构
+    - console: 任务绑定的控制台地址
+    - ds_base: 任务绑定的app数据段起始地址
 */
 struct TASK {
     int selector, flags;
     int level, priority;
     struct FIFO32 fifo;
     struct TSS32 tss;
+    struct CONSOLE *console;
+    int ds_base;
 };
 /*
     任务层级
@@ -399,8 +403,10 @@ void task_sleep(struct TASK *task);
 void make_window8(unsigned char *buf, int xsize, int ysize, char *title, char active);
 void make_title8(unsigned char *buf, int xsize, char *title, char active);
 void change_title8(struct LAYER *layer, char active);
+void switch_window(struct LAYERCTL *layerctl, struct LAYER *current_layer, struct LAYER *target_layer);
 void make_textbox8(struct LAYER *layer, int x0, int y0, int sx, int sy, int c);
 void putfonts8_asc_layer(struct LAYER *layer, int x, int y, int color, int backcolor, char *string, int length);
+extern struct LAYER *keyboard_input_layer;
 
 /* console.c */
 

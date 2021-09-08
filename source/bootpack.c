@@ -2,8 +2,7 @@
 #include <stdio.h> // sprintf()
 
 #define KEYCMD_LED      0xed
-
-struct LAYER *switch_window(struct LAYERCTL *layerctl, struct LAYER *current_layer, struct LAYER *target_layer);
+struct LAYER *keyboard_input_layer; // 键盘输入的窗口图层
 
 void HariMain(void) {
     struct BOOTINFO *bootinfo = (struct BOOTINFO *)0x0ff0; // 获取asmhead.nas中存入的bootinfo信息
@@ -93,11 +92,11 @@ void HariMain(void) {
 
 // 管理图层
     struct LAYERCTL *layerctl;
-    struct LAYER *layer_back, *layer_mouse, *layer_window, *layer_window_b[3], *layer_console;
-    unsigned char *buf_back, buf_mouse[256], *buf_window, *buf_window_b, *buf_console;
     layerctl = layerctl_init(mng, bootinfo->vram, bootinfo->screenx, bootinfo->screeny); // 初始化图层管理
     *((int *) 0x0fe4) = (int) layerctl; // 将图层管理器地址放入0xfe4, 便于app调用系统api
     // 背景图层
+    struct LAYER *layer_back;
+    unsigned char *buf_back;
     layer_back = layer_alloc(layerctl); // 新建背景图层
     buf_back = (unsigned char *) memory_alloc_4k(mng, bootinfo->screenx * bootinfo->screeny); // 背景图层内容地址
     layer_init(layer_back, buf_back, bootinfo->screenx, bootinfo->screeny, -1); // 初始化背景图层
@@ -116,11 +115,15 @@ void HariMain(void) {
     putfonts8_asc_layer(layer_back, 101, 71, COL8_000000, COL8_008484, "Haribote OS.", 40); // 文字阴影效果
 
     // 鼠标图层
+    struct LAYER *layer_mouse;
+    unsigned char buf_mouse[256];
     layer_mouse = layer_alloc(layerctl); // 新建鼠标图层
     layer_init(layer_mouse, buf_mouse, 16, 16, 99); // 初始化鼠标图层(图层颜色设置为未使用的99, 鼠标背景颜色也设置为99, 两者相同则透明)
     init_mouse_cursor8(buf_mouse, 99); // 绘制鼠标指针(图层颜色设置为未使用的99, 鼠标背景颜色也设置为99, 两者相同则透明)
 
     // 窗口图层
+    struct LAYER *layer_window;
+    unsigned char *buf_window;
     layer_window = layer_alloc(layerctl); // 新建窗口图层
     buf_window = (unsigned char *) memory_alloc_4k(mng, 160 * 52);
     layer_init(layer_window, buf_window, 144, 52, -1); // 初始化窗口图层
@@ -134,7 +137,7 @@ void HariMain(void) {
 
 // 多任务
     // 任务控制器初始化, 并返回当前任务
-    struct TASK *task_a, *task_b[3], *task_console;
+    struct TASK *task_a;
     task_a = taskctl_init(mng);
 
     // 主任务
@@ -145,6 +148,9 @@ void HariMain(void) {
     layer_window->task = task_a; // 图层绑定任务(任务被关闭图层也将被关闭)
 
     // 任务B(多窗口任务)
+    struct LAYER *layer_window_b[3];
+    unsigned char *buf_window_b;
+    struct TASK *task_b[3];
     int i;
     for (i = 0; i < 3; i++) {
         // 窗口图层
@@ -174,33 +180,38 @@ void HariMain(void) {
 
     // 任务C(控制台任务)
     // 控制台图层
-    layer_console = layer_alloc(layerctl);
-    buf_console = (unsigned char *) memory_alloc_4k(mng, 256 * 165);
-    layer_init(layer_console, buf_console, 256, 165, -1);
-    layer_console->flags |= 0x20; // 标记为窗口程序-console(0x10(bit4):窗口程序-app,0x20(bit5):窗口程序-console)
-    make_window8(buf_console, 256, 165, "console", 0);
-    make_textbox8(layer_console, 8, 28, 240, 128, COL8_000000);
-    // 控制台任务
-    task_console = task_alloc();
-    // 任务TSS寄存器初始化
-    task_console->tss.esp = memory_alloc_4k(mng, 64 * 1024) + 64 * 1024; // 任务使用的栈(64KB), esp存入栈顶(栈末尾高位地址)的地址
-    task_console->tss.eip = (int) &console_task;
-    task_console->tss.es = 1 * 8;
-    task_console->tss.cs = 2 * 8; // 使用段号2
-    task_console->tss.ss = 1 * 8;
-    task_console->tss.ds = 1 * 8;
-    task_console->tss.fs = 1 * 8;
-    task_console->tss.gs = 1 * 8;
-    // 往任务传值
-    task_console->tss.esp -= 4; // 将要放入4字节参数, 压栈4字节
-    *((int *) task_console->tss.esp) = (int) memorytotal; // 将内存信息入栈
-    task_console->tss.esp -= 4; // 将要放入4字节参数, 压栈4字节
-    *((int *) task_console->tss.esp) = (int) layer_console; // 将图层地址入栈
-    task_console->tss.esp -= 4; // 方法调用时返回地址保存在栈顶[ESP], 第一个参数保存在[ESP+4], 因此为了伪造方法调用, 压栈4字节
-    // 启动任务
-    task_run(task_console, 2, 2); // task层级为2, 优先级为2
-    // 图层绑定任务(绑定后任务被关闭图层也将被关闭)
-    layer_console->task = task_console;
+    struct TASK *task_console[2];
+    struct LAYER *layer_console[2];
+    unsigned char *buf_console[2];
+    for (i = 0; i < 2; i++) {
+        layer_console[i] = layer_alloc(layerctl);
+        buf_console[i] = (unsigned char *) memory_alloc_4k(mng, 256 * 165);
+        layer_init(layer_console[i], buf_console[i], 256, 165, -1);
+        layer_console[i]->flags |= 0x20; // 标记为窗口程序-console(0x10(bit4):窗口程序-app,0x20(bit5):窗口程序-console)
+        make_window8(buf_console[i], 256, 165, "console", 0);
+        make_textbox8(layer_console[i], 8, 28, 240, 128, COL8_000000);
+        // 控制台任务
+        task_console[i] = task_alloc();
+        // 任务TSS寄存器初始化
+        task_console[i]->tss.esp = memory_alloc_4k(mng, 64 * 1024) + 64 * 1024; // 任务使用的栈(64KB), esp存入栈顶(栈末尾高位地址)的地址
+        task_console[i]->tss.eip = (int) &console_task;
+        task_console[i]->tss.es = 1 * 8;
+        task_console[i]->tss.cs = 2 * 8; // 使用段号2
+        task_console[i]->tss.ss = 1 * 8;
+        task_console[i]->tss.ds = 1 * 8;
+        task_console[i]->tss.fs = 1 * 8;
+        task_console[i]->tss.gs = 1 * 8;
+        // 往任务传值
+        task_console[i]->tss.esp -= 4; // 将要放入4字节参数, 压栈4字节
+        *((int *) task_console[i]->tss.esp) = (int) memorytotal; // 将内存信息入栈
+        task_console[i]->tss.esp -= 4; // 将要放入4字节参数, 压栈4字节
+        *((int *) task_console[i]->tss.esp) = (int) layer_console[i]; // 将图层地址入栈
+        task_console[i]->tss.esp -= 4; // 方法调用时返回地址保存在栈顶[ESP], 第一个参数保存在[ESP+4], 因此为了伪造方法调用, 压栈4字节
+        // 启动任务
+        task_run(task_console[i], 2, 2); // task层级为2, 优先级为2
+        // 图层绑定任务(绑定后任务被关闭图层也将被关闭)
+        layer_console[i]->task = task_console[i];
+    }
 
 // 显示图层
     layer_slide(layer_back, 0, 0); // 移动背景图层
@@ -209,10 +220,12 @@ void HariMain(void) {
     layer_slide(layer_window_b[0], 168, 56); // 移动窗口图层
     layer_slide(layer_window_b[1], 8, 116); // 移动窗口图层
     layer_slide(layer_window_b[2], 168, 116); // 移动窗口图层
-    layer_slide(layer_console, 32, 176); // 移动窗口图层
+    layer_slide(layer_console[1], 332, 176); // 移动窗口图层
+    layer_slide(layer_console[0], 32, 176); // 移动窗口图层
     // 实际图层高度由已有图层决定, 而不是指定值, 相同高度, 后者更低
     layer_updown(layer_back, 0); // 切换背景图层高度
-    layer_updown(layer_console, 1); // 切换窗口图层高度(实际图层5)
+    layer_updown(layer_console[1], 1); // 切换窗口图层高度(实际图层6)
+    layer_updown(layer_console[0], 1); // 切换窗口图层高度(实际图层5)
     layer_updown(layer_window, 1); // 切换窗口图层高度(实际图层4)
     layer_updown(layer_window_b[0], 1); // 切换窗口图层高度(实际图层3)
     layer_updown(layer_window_b[1], 1); // 切换窗口图层高度(实际图层2)
@@ -221,7 +234,7 @@ void HariMain(void) {
 
 // 窗口图层控制
     struct LAYER *mouse_click_layer = 0; // 鼠标输入的窗口图层
-    struct LAYER *keyboard_input_layer = layer_window; // 键盘输入的窗口图层
+    keyboard_input_layer = layer_window; // 键盘输入的窗口图层
 
 // 键盘和鼠标输入处理
     for (;;) {
@@ -290,9 +303,13 @@ void HariMain(void) {
                             cursor_x += 8; // 光标前移
                         }
                     }
-                    if (keyboard_input_layer == layer_console) {
+                    if (keyboard_input_layer == layer_console[0]) {
                         // 键盘输入窗口为layer_console: 发送键盘字符到该任务绑定的中断缓冲区
-                        fifo32_put(&task_console->fifo, s[0] + 256); // 发送对应键盘字符的ASCII
+                        fifo32_put(&task_console[0]->fifo, s[0] + 256); // 发送对应键盘字符的ASCII
+                    }
+                    if (keyboard_input_layer == layer_console[1]) {
+                        // 键盘输入窗口为layer_console: 发送键盘字符到该任务绑定的中断缓冲区
+                        fifo32_put(&task_console[1]->fifo, s[0] + 256); // 发送对应键盘字符的ASCII
                     }
                 }
                 if (i == 256 + 0x0e) {
@@ -304,21 +321,29 @@ void HariMain(void) {
                             cursor_x -= 8; // 光标后移
                         }
                     }
-                    if (keyboard_input_layer == layer_console) {
+                    if (keyboard_input_layer == layer_console[0]) {
                         // 键盘输入窗口为layer_console: 发送键盘字符到该任务绑定的中断缓冲区
-                        fifo32_put(&task_console->fifo, 8 + 256); // 发送对应键盘字符的ASCII, ASCII中空格为8
+                        fifo32_put(&task_console[0]->fifo, 8 + 256); // 发送对应键盘字符的ASCII, ASCII中空格为8
+                    }
+                    if (keyboard_input_layer == layer_console[1]) {
+                        // 键盘输入窗口为layer_console: 发送键盘字符到该任务绑定的中断缓冲区
+                        fifo32_put(&task_console[1]->fifo, 8 + 256); // 发送对应键盘字符的ASCII, ASCII中空格为8
                     }
                 }
                 if (i == 256 + 0x1c) {
                     /* 回车键 */
-                    if (keyboard_input_layer == layer_console) {
+                    if (keyboard_input_layer == layer_console[0]) {
                         // 键盘输入窗口为layer_console: 发送键盘字符到该任务绑定的中断缓冲区
-                        fifo32_put(&task_console->fifo, 10 + 256); // 发送对应键盘字符的ASCII
+                        fifo32_put(&task_console[0]->fifo, 10 + 256); // 发送对应键盘字符的ASCII
+                    }
+                    if (keyboard_input_layer == layer_console[1]) {
+                        // 键盘输入窗口为layer_console: 发送键盘字符到该任务绑定的中断缓冲区
+                        fifo32_put(&task_console[1]->fifo, 10 + 256); // 发送对应键盘字符的ASCII
                     }
                 }
                 if (i == 256 + 0x0f) {
                     /* TAB键: 切换窗口图层 */
-                    keyboard_input_layer = switch_window(layerctl, keyboard_input_layer, 0);
+                    switch_window(layerctl, keyboard_input_layer, 0);
                 }
                 /* Shitf键处理: 左Shift按下置1, 右Shift按下置2, 两个按下置3, 两个都不按置0 */
                 if (i == 256 + 0x2a) {
@@ -369,17 +394,18 @@ void HariMain(void) {
                 }
                 if (i == 256 + 0x3b && key_shift !=0) {
                     /* Shitf+F1组合键处理: 强制结束app */
+                    struct TASK *task = keyboard_input_layer->task;
                     // 强制结束app时检查tss.ss0, 若为0则代表app未运行, 不能再次结束app.(启动app时会将操作系统段号放入tss.ss0, 结束app时会将tss.ss0置为0)
-                    if (task_console->tss.ss0 != 0) {
-                        // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
-                        struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
-                        // 打印信息
-                        console_putstr0(console, "\nBreak(key) :\n");
+                    if (task != 0 && task->tss.ss0 != 0) {
+                        // 切换窗口图层
+                        switch_window(layerctl, keyboard_input_layer, 0);
+                        // 打印信息到控制台
+                        console_putstr0(task->console, "\nBreak(key) :\n");
                         // 改变TSS寄存器值时不能切换到其他任务
                         io_cli();
                         // 通过修改tss.eip的值jmp到asm_end_app函数(强制结束app的函数)
-                        task_console->tss.eax = (int) &(task_console->tss.esp0); // asm_end_app函数所需的参数
-                        task_console->tss.eip = (int) asm_end_app; // 调用asm_end_app函数
+                        task->tss.eax = (int) &(task->tss.esp0); // asm_end_app函数所需的参数
+                        task->tss.eip = (int) asm_end_app; // 调用asm_end_app函数
                         io_sti();
                     }
                 }
@@ -412,8 +438,8 @@ void HariMain(void) {
 
                     // 显示鼠标指针移动
                     // 计算鼠标x, y轴的数值, 基于屏幕中心点
-                    mx += mdec.x/5;
-                    my += mdec.y/5;
+                    mx += mdec.x;
+                    my += mdec.y;
                     // 防止鼠标超出屏幕
                     if (mx < 0) {
                         mx = 0;
@@ -429,8 +455,8 @@ void HariMain(void) {
                         my = bootinfo->screeny - 1;
                     }
                     // 显示鼠标坐标数据
-                    sprintf(s, "(%3d, %3d, %3d)", mx, my, mouse_click_layer->height);
-                    putfonts8_asc_layer(layer_back, 0, 0, COL8_FFFFFF, COL8_008484, s, 30);
+                    sprintf(s, "(%3d, %3d)", mx, my);
+                    putfonts8_asc_layer(layer_back, 0, 0, COL8_FFFFFF, COL8_008484, s, 20);
                     // 移动鼠标
                     layer_slide(layer_mouse, mx, my); // 显示鼠标
                     // 鼠标左键
@@ -450,7 +476,7 @@ void HariMain(void) {
                                         layer_updown(mouse_click_layer, layerctl->top - 1);
                                         if (mouse_click_layer != keyboard_input_layer) {
                                             /* 鼠标点击的并非当前输入窗口: 输入窗口切换到被点击的窗口 */
-                                            keyboard_input_layer = switch_window(layerctl, keyboard_input_layer, mouse_click_layer);
+                                            switch_window(layerctl, keyboard_input_layer, mouse_click_layer);
                                         }
                                         if (3 <= x && x < mouse_click_layer->bxsize - 3 && 3 <= y && y < 21) {
                                             /* 鼠标点击的是窗口标题栏: 进入窗口移动模式, 记录下移动前的坐标 */
@@ -459,18 +485,20 @@ void HariMain(void) {
                                             mmy = my;
                                         }
                                         if (mouse_click_layer->bxsize - 21 <= x && x < mouse_click_layer->bxsize - 5 && 5 <= y && y < 19) {
-                                            /* 鼠标点击的是窗口关闭按钮"X"": 关闭窗口 */
-                                            if (mouse_click_layer->task!=0) {
+                                            /* 鼠标点击的是app窗口关闭按钮"X"": 关闭窗口 */
+                                            if (mouse_click_layer->flags & 0x10 != 0) {
                                                 /* 点击的是app窗口 */
-                                                // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
-                                                struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
+                                                // 切换窗口图层
+                                                switch_window(layerctl, keyboard_input_layer, 0);
+                                                // TASK地址
+                                                struct TASK *task = mouse_click_layer->task;
                                                 // 打印信息
-                                                console_putstr0(console, "\nBreak(key) :\n");
+                                                console_putstr0(task->console, "\nBreak(key) :\n");
                                                 // 改变TSS寄存器值时不能切换到其他任务
                                                 io_cli();
                                                 // 通过修改tss.eip的值jmp到asm_end_app函数(强制结束app的函数)
-                                                task_console->tss.eax = (int) &(task_console->tss.esp0); // asm_end_app函数所需的参数
-                                                task_console->tss.eip = (int) asm_end_app; // 调用asm_end_app函数
+                                                task->tss.eax = (int) &(task->tss.esp0); // asm_end_app函数所需的参数
+                                                task->tss.eip = (int) asm_end_app; // 调用asm_end_app函数
                                                 io_sti();
                                             }
                                         }
@@ -525,42 +553,4 @@ void HariMain(void) {
             layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
         }
     }
-}
-
-/*
-    切换窗口图层
-    - layerctl: 图层控制器
-    - current_layer: 当前窗口图层
-    - target_layer: 目标窗口图层(若为0则不指定图层, 自动使用下一图层)
-*/
-struct LAYER *switch_window(struct LAYERCTL *layerctl, struct LAYER *current_layer, struct LAYER *target_layer) {
-    // 旧窗口失去焦点
-    if (current_layer->flags != 0) {
-        // 切换窗口标题栏颜色
-        change_title8(current_layer, 0);
-        // 关闭光标
-        if ((current_layer->flags & 0x20) != 0) {
-            /* 当前窗口为"窗口程序-console", 存在光标, 需要关闭 */
-            fifo32_put(&current_layer->task->fifo, 3); // 通过中断fifo通知光标关闭
-        }
-    }
-    // 切换图层
-    if (target_layer == 0) {
-        /* 没有指定目标图层, 自动切换到下一图层 */
-        int i = current_layer->height - 1;
-        if (i == 0) {
-            i = layerctl->top - 1;
-        }
-        current_layer = layerctl->layersorted[i];
-    } else {
-        /* 指定了目标图层, 则直接使用 */
-        current_layer = target_layer;
-    }
-    // 新窗口获得焦点
-    change_title8(current_layer, 1);
-    if ((current_layer->flags & 0x20) != 0) {
-        /* 当前窗口为"窗口程序-console", 存在光标, 需要开启 */
-        fifo32_put(&current_layer->task->fifo, 2); // 通过中断fifo通知光标开启
-    }
-    return current_layer;
 }

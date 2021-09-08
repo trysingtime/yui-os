@@ -123,6 +123,44 @@ void change_title8(struct LAYER *layer, char active) {
 }
 
 /*
+    切换窗口图层
+    - layerctl: 图层控制器
+    - current_layer: 当前窗口图层
+    - target_layer: 目标窗口图层(若为0则不指定图层, 自动使用下一图层)
+*/
+void switch_window(struct LAYERCTL *layerctl, struct LAYER *current_layer, struct LAYER *target_layer) {
+    // 旧窗口失去焦点
+    if (current_layer->flags != 0) {
+        // 切换窗口标题栏颜色
+        change_title8(current_layer, 0);
+        // 关闭光标
+        if ((current_layer->flags & 0x20) != 0) {
+            /* 当前窗口为"窗口程序-console", 存在光标, 需要关闭 */
+            fifo32_put(&current_layer->task->fifo, 3); // 通过中断fifo通知光标关闭
+        }
+    }
+    // 切换图层
+    if (target_layer == 0) {
+        /* 没有指定目标图层, 自动切换到下一图层 */
+        int i = current_layer->height - 1;
+        if (i == 0) {
+            i = layerctl->top - 1;
+        }
+        current_layer = layerctl->layersorted[i];
+    } else {
+        /* 指定了目标图层, 则直接使用 */
+        current_layer = target_layer;
+    }
+    // 新窗口获得焦点
+    change_title8(current_layer, 1);
+    if ((current_layer->flags & 0x20) != 0) {
+        /* 当前窗口为"窗口程序-console", 存在光标, 需要开启 */
+        fifo32_put(&current_layer->task->fifo, 2); // 通过中断fifo通知光标开启
+    }
+    keyboard_input_layer = current_layer;
+}
+
+/*
     绘制文本框
     - layer: 指定图层
     - x0, y0: 文本框在图层中的坐标(左边和上边溢出3个像素, 右边和下边溢出2个像素)

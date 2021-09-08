@@ -12,11 +12,10 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
     console.cursor_x = 8;
     console.cursor_y = 28;
     console.cursor_color = -1; // 颜色为-1, 不显示
-    // API: 将控制台内存地址放入0x0fec中, 应用程序可以通过0x0fec获取控制台地址, 进而调用控制台函数
-    *((int *) 0x0fec) = (int) &console;
 
     /* 获取当前任务 */
     struct TASK *task = task_current();
+    task->console = &console; // 将控制台内存地址放入TASK中, 应用程序可以通过TASK获取控制台地址, 进而调用控制台函数
     /* 设置中断缓冲区 */
     int fifobuf[128];
     fifo32_init(&task->fifo, 128, fifobuf, task); // 中断到来自动唤醒task
@@ -401,26 +400,26 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
         // 启动app
         if (fileinfo->size >= 36 && strncmp(p + 4, "Hari", 4) == 0 && *p == 0x00) {
             // .hrb文件开头的36字节存放了文件信息(详情见README.MD)
-            int segment_size    = *((int *) (p + 0x0000)); // 请求操作系统为应用程序准备的数据段的大小
+            int segment_size    = *((int *) (p + 0x0000)); // 请求操作系统为应用程序准备的数据段的大小(编译时指定的malloc大小+栈大小, 请确保app的malloc大小超过32K!!!)
             int esp             = *((int *) (p + 0x000c)); // ESP初值(栈顶, 栈大小由obj2bim参数如(stack:1k)决定)
             int datasize        = *((int *) (p + 0x0010)); // hrb 文件内数据部分的大小
             int datastart       = *((int *) (p + 0x0014)); // hrb 文件内数据部分的起始地址
+            // 在TSS中注册操作系统的段号和ESP(将操作系统的ESP和段号先后压入TSS栈esp0)
+            struct TASK *task = task_current();
             // 将app代码段注册到GDT, 段号1003(段号1~2由dsctbl.c使用, 段号3~1002由multitask.c使用), 段属性加上0x60, 将段设置成应用程序专用段
             struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADR_GDT; // GDT地址
-            set_segmdesc(gdt + 1003, fileinfo->size - 1, (int) p, AR_CODE32_ER + 0x60);
+            set_segmdesc(gdt + 1000 + task->selector / 8, fileinfo->size - 1, (int) p, AR_CODE32_ER + 0x60);
             // 将app数据段注册到GDT, 段号1004, 大小segment_size, 段属性加上0x60, 将段设置成应用程序专用段
             char *q = (char *) memory_alloc_4k(mng, segment_size);
-            *((int *) 0x0fe8) = (int) q; // 将app数据段起始地址放入0x0fe8中, 便于app调用系统API
-            set_segmdesc(gdt + 1004, segment_size - 1, (int) q, AR_DATA32_RW + 0x60);
+            task->ds_base = (int) q; // 将app数据段起始地址放入TASK中, 便于app调用系统API
+            set_segmdesc(gdt + 2000 + task->selector / 8, segment_size - 1, (int) q, AR_DATA32_RW + 0x60);
             // 将hrb文件的数据部分复制到数据段(存放在堆栈后面, 因此形成: 数据段=栈+hrb文件数据)
             int i;
             for (i = 0; i < datasize; i++) {
                 q[esp + i] = p[datastart + i];
             }
-            // 在TSS中注册操作系统的段号和ESP(将操作系统的ESP和段号先后压入TSS栈esp0)
-            struct TASK *task = task_current();
             // C语言编写的app需要跳转到.hrb文件0x1b位置(该位置为JMP指令, 会再次跳转到真正的app启动点)
-            start_app(0x1b, 1003 * 8, esp, 1004 * 8, &(task->tss.esp0));
+            start_app(0x1b, 1000 * 8 + task->selector, esp, 2000 * 8 + task->selector, &(task->tss.esp0));
             /* 正常返回: 新版本使用了RETF来调用app函数, app不能再使用far-RET回应, 而是直接调用asm_end_app结束程序直接返回到此处 */
             /* 强制返回: Shift + F1 组合键强制结束app也会返回此处 */
 
@@ -428,6 +427,7 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
             struct LAYERCTL *layerctl = (struct LAYERCTL *) *((int *) 0x0fe4); // 图层控制器地址, 操作系统启动时已将地址放入了0x0fe4
             for (i = 0; i < MAX_LAYERS; i++) {
                 struct LAYER *layer = &(layerctl->layers[i]);
+                switch_window(layerctl, keyboard_input_layer, 0);
                 // 图层绑定到"task_console"且图层为正在使用(bit1=1)的"窗口程序-app"(bit4=1), 自动关闭该图层
                 if (layer->task == task && (layer->flags & 0x11) == 0x11) {
                     layer_free(layer);
@@ -455,10 +455,11 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
     - edx: 根据此值来判断调用哪个函数
 */
 int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax) {
-    // app数据段起始地址, 此处从0x0fe8获取, 系统运行app时, 已将数据段起始地址放入0x0fe8
-    int ds_base = *((int *) 0x0fe8);
-    // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
-    struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
+    struct TASK *task = task_current();
+    // app数据段起始地址
+    int ds_base = task->ds_base;
+    // 控制台内存地址
+    struct CONSOLE *console = task->console;
     /*
         返回值给app
         api执行两次PUSHAD(顺序:EDI,ESI,EBP,ESP,EBX,EDX,ECX,EAX), 第一次是调用函数前保存寄存器的值, 第二次是往栈存入参数.
@@ -478,7 +479,6 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         console_putstr1(console, (char *) ebx + ds_base, ecx); // ebx传入的是在app数据段中的相对地址, 加上段起始地址得到准确地址
     } else if (edx == 4) {
         /* 4: 结束app */
-        struct TASK *task = task_current();
         return &(task->tss.esp0); // tss.esp0的地址, start_app()时将操作系统的ESP和段号入栈该esp0, 此时还原(ss:esp), 使指令回到cmd_app(), 从而结束app
     } else if (edx == 5) {
         /* 5: 显示窗口(edx:5,ebx:窗口图层地址,esi:窗口宽度,edi:窗口高度,eax:窗口颜色和透明度,ecx:窗口标题,返回值放入eax) */
@@ -486,14 +486,16 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         struct LAYERCTL *layerctl = (struct LAYERCTL *) *((int *) 0x0fe4); // 图层控制器地址, 操作系统启动时已将地址放入了0x0fe4
         struct LAYER *layer = layer_alloc(layerctl);
         // 将图层绑定到控制台task, app正常结束或强制结束后都会关闭所有绑定到控制台task的图层
-        layer->task = task_current();
+        layer->task = task;
         layer->flags |= 0x10; // 标记为窗口程序-app(0x10(bit4):窗口程序-app,0x20(bit5):窗口程序-console)
         layer_init(layer, (char *) ebx + ds_base, esi, edi, eax);
         // 新建窗口
         make_window8((char *) ebx + ds_base, esi, edi, (char *) ecx + ds_base, 0);
         // 显示图层
-        layer_slide(layer, 100, 50);
-        layer_updown(layer, layerctl->top - 1);
+        layer_slide(layer, 100, 100);
+        // layer_slide(layer, (layerctl->xsize - esi) / 2, (layerctl->ysize - edi) / 2); // 居中显示
+        layer_updown(layer, layerctl->top); // 置顶显示(和鼠标相同图层, 鼠标图层自动上移)
+        switch_window(layerctl, console->layer, layer); // 切换窗口
         // 返回值
         reg[7] = (int) layer; // 只返回图层地址到EAX寄存器(返回值默认为eax寄存器)
     } else if (edx == 6) {
@@ -536,7 +538,6 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         layer_free((struct LAYER *) ebx);
     } else if (edx == 15) {
         /* 15: 获取中断输入(edx:15,eax:是否休眠等待至中断输入(1: 休眠直到中断输入, 0: 不休眠返回-1)), 返回值放入eax*/
-        struct TASK *task = task_current();
         for(;;) {
             io_cli();
             if (fifo32_status(&task->fifo) == 0) {
@@ -581,7 +582,7 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         ((struct TIMER *) reg[7])->isapp = 1; // 标识该定时器是否属于app(1:是,0:否. app结束同时中止定时器)
     } else if (edx == 17) {
         /* 设置定时器发送的数据(edx:17,ebx:定时器地址,eax:数据) */
-        timer_init((struct TIMER *) ebx, &task_current()->fifo, eax + 256);
+        timer_init((struct TIMER *) ebx, &task->fifo, eax + 256);
     } else if (edx == 18) {
         /* 设置定时器倒计时(edx:18,ebx:定时器地址,eax:时间(timeout/100s)) */
         timer_settime((struct TIMER *) ebx, eax);
@@ -617,15 +618,15 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
             其中esp[10~15]为异常产生时CPU自动PUSH的结果
 */
 int *inthandler0d(int *esp) {
-    // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
-    struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
+    struct TASK *task = task_current();
+    // 控制台内存地址
+    struct CONSOLE *console = task->console;
     console_putstr0(console, "\nINT 0D :\n General Protected Exception.\n");
     // 打印引发异常的指令地址
     char s[30];
     sprintf(s, "EIP = %08X\n", esp[11]);
     console_putstr0(console, s);
     // 强制结束app
-    struct TASK *task = task_current();
     return &(task->tss.esp0); // tss.esp0地址在start_app()时将操作系统的ESP和段号入栈, 此时还原, 使指令回到cmd_app(), 从而结束app
 }
 
@@ -638,15 +639,15 @@ int *inthandler0d(int *esp) {
         其中esp[10~15]为异常产生时CPU自动PUSH的结果
 */
 int *inthandler0c(int *esp) {
-    // 控制台内存地址, 此处从0x0fec获取, 控制台初始化时, 已将自身地址放入0x0fec
-    struct CONSOLE *console = (struct CONSOLE *) *((int *) 0x0fec);
+    struct TASK *task = task_current();
+    // 控制台内存地址
+    struct CONSOLE *console = task->console;
     console_putstr0(console, "\nINT 0D :\n Stack Exception.\n");
     // 打印引发异常的指令地址
     char s[30];
     sprintf(s, "EIP = %08X\n", esp[11]);
     console_putstr0(console, s);
     // 强制结束app
-    struct TASK *task = task_current();
     return &(task->tss.esp0); // tss.esp0地址在start_app()时将操作系统的ESP和段号入栈, 此时还原, 使指令回到cmd_app(), 从而结束app
 }
 

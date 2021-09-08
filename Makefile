@@ -44,6 +44,7 @@ app : normal.app
 normal.app : a.hrb  hello4.hrb hello5.hrb winhelo2.hrb stars.hrb lines.hrb walk.hrb noodle.hrb beepdown.hrb color.hrb color2.hrb
 crack.app : crack1.hrb crack2.hrb crack3.hrb crack4.hrb crack5.hrb
 bug.app : bug1.hrb bug2.hrb bug3.hrb
+
 ## 汇编语言
 %.hrb : app\%.nas Makefile
 	$(NASK) $< target\$@ target\$*.lst
@@ -68,7 +69,7 @@ api.obj : source\api.nas Makefile
 %.bim : %.obj api.obj Makefile
 	$(OBJ2BIM) @$(RULEFILE) out:target\$*.bim stack:1k map:target\$*.map target\$*.obj target\api.obj
 %.hrb : %.bim Makefile
-	$(BIM2HRB) target\$*.bim target\$*.hrb 0
+	$(BIM2HRB) target\$*.bim target\$*.hrb 64k
 
 # 启动程序加载器
 ipl10.bin : source\ipl10.nas Makefile

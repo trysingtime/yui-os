@@ -11,7 +11,7 @@ void HariMain(void) {
     /* 键盘按键映射表 */
     static char keytable0[0x80] = {
 		0,   0,   '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 0,   0,
-		'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']', 0,   0,   'A', 'S',
+		'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']', 0, 0,   'A', 'S',
 		'D', 'F', 'G', 'H', 'J', 'K', 'L', ';', '\'', '`',0,   '\\','Z', 'X', 'C', 'V',
 		'B', 'N', 'M', ',', '.', '/', 0,   '*', 0,   ' ', 0,   0,   0,   0,   0,   0,
 		0,   0,   0,   0,   0,   0,   0,   '7', '8', '9', '-', '4', '5', '6', '+', '1',
@@ -20,8 +20,8 @@ void HariMain(void) {
 		0,   0,   0,   '-', 0,  0,   0,   0,   0,   0,   0,   0,   0,   '\\', 0,  0
 	};
     static char keytable1[0x80] = {
-		0,   0,   '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', 0,   0,
-		'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', 0,   0,   'A', 'S',
+		0,   0,   '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', 0,  0,
+		'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', 0,  0,  'A', 'S',
 		'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',  0,   '|', 'Z', 'X', 'C', 'V',
 		'B', 'N', 'M', '<', '>', '?', 0,   '*', 0,   ' ', 0,   0,   0,   0,   0,   0,
 		0,   0,   0,   0,   0,   0,   0,   '7', '8', '9', '-', '4', '5', '6', '+', '1',
@@ -77,7 +77,7 @@ void HariMain(void) {
     struct TIMER *timer;
     timer = timer_alloc();
     timer_init(timer, &fifo, 1);
-    timer_settime(timer, 50); // 0.5s
+    // timer_settime(timer, 50); // 0.5s
 
 // 管理内存
     struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR;
@@ -121,20 +121,6 @@ void HariMain(void) {
     layer_init(layer_mouse, buf_mouse, 16, 16, 99); // 初始化鼠标图层(图层颜色设置为未使用的99, 鼠标背景颜色也设置为99, 两者相同则透明)
     init_mouse_cursor8(buf_mouse, 99); // 绘制鼠标指针(图层颜色设置为未使用的99, 鼠标背景颜色也设置为99, 两者相同则透明)
 
-    // 窗口图层
-    struct LAYER *layer_window;
-    unsigned char *buf_window;
-    layer_window = layer_alloc(layerctl); // 新建窗口图层
-    buf_window = (unsigned char *) memory_alloc_4k(mng, 160 * 52);
-    layer_init(layer_window, buf_window, 144, 52, -1); // 初始化窗口图层
-    layer_window->flags |= 0x20; // 标记为窗口程序-console(0x10(bit4):窗口程序-app,0x20(bit5):窗口程序-console)
-    make_window8(buf_window, 144, 52, "task_a", 1); // 绘制窗口
-    // 绘制窗口图层-文本框
-    make_textbox8(layer_window, 8, 28, 144, 16, COL8_FFFFFF);
-    int cursor_x, cursor_c;
-    cursor_x = 8; // 光标位置
-    cursor_c = COL8_FFFFFF; // 光标颜色
-
 // 多任务
     // 任务控制器初始化, 并返回当前任务
     struct TASK *task_a;
@@ -145,44 +131,14 @@ void HariMain(void) {
     int task_a_fifo[128];
     fifo32_init(&task_a->fifo, 128, task_a_fifo, 0); // task_a缓冲区
     fifo.task = task_a; // 通用缓冲区fifo绑定任务(若task_a休眠时有中断输入fifo, 则唤醒task_a)
-    layer_window->task = task_a; // 图层绑定任务(任务被关闭图层也将被关闭)
-
-    // 任务B(多窗口任务)
-    struct LAYER *layer_window_b[3];
-    unsigned char *buf_window_b;
-    struct TASK *task_b[3];
-    int i;
-    for (i = 0; i < 3; i++) {
-        // 窗口图层
-        layer_window_b[i] = layer_alloc(layerctl); // 新建窗口图层
-        buf_window_b = (unsigned char *) memory_alloc_4k(mng, 144 * 52);
-        layer_init(layer_window_b[i], buf_window_b, 144, 52, -1); // 初始化窗口图层
-        sprintf(s, "task_b%d", i);
-        make_window8(buf_window_b, 144, 52, s, 0); // 绘制窗口
-        // 任务B初始化
-        task_b[i] = task_alloc();
-        // 任务B, TSS寄存器初始化
-        task_b[i]->tss.esp = memory_alloc_4k(mng, 64 * 1024) + 64 * 1024; // 任务B使用的栈(64KB), esp存入栈顶(栈末尾高位地址)的地址
-        task_b[i]->tss.eip = (int) &task_b_implement;
-        task_b[i]->tss.es = 1 * 8;
-        task_b[i]->tss.cs = 2 * 8; // 使用段号2
-        task_b[i]->tss.ss = 1 * 8;
-        task_b[i]->tss.ds = 1 * 8;
-        task_b[i]->tss.fs = 1 * 8;
-        task_b[i]->tss.gs = 1 * 8;
-        // 往任务B传值
-        task_b[i]->tss.esp -= 4; // 将要放入4字节参数, 压栈4字节
-        *((int *) task_b[i]->tss.esp) = (int) layer_window_b[i]; // 将图层地址入栈
-        task_b[i]->tss.esp -= 4; // 方法调用时返回地址保存在栈顶[ESP], 第一个参数保存在[ESP+4], 因此为了伪造方法调用, 压栈4字节
-        // 启动任务B
-        // task_run(task_b[i], 2, i + 1); // task层级为2, 优先级依次递增0.01
-    }
 
     // 任务C(控制台任务)
     // 控制台图层
     struct TASK *task_console[2];
     struct LAYER *layer_console[2];
+    int *fifo_console[2];
     unsigned char *buf_console[2];
+    int i;
     for (i = 0; i < 2; i++) {
         layer_console[i] = layer_alloc(layerctl);
         buf_console[i] = (unsigned char *) memory_alloc_4k(mng, 256 * 165);
@@ -211,30 +167,27 @@ void HariMain(void) {
         task_run(task_console[i], 2, 2); // task层级为2, 优先级为2
         // 图层绑定任务(绑定后任务被关闭图层也将被关闭)
         layer_console[i]->task = task_console[i];
+        // 任务绑定缓冲区
+        fifo_console[i] = (int *) memory_alloc_4k(mng, 128 * 4);
+        fifo32_init(&task_console[i]->fifo, 128, fifo_console[i], task_console[i]); // 中断到来自动唤醒task
     }
 
 // 显示图层
     layer_slide(layer_back, 0, 0); // 移动背景图层
     layer_slide(layer_mouse, mx, my); // 移动鼠标图层到屏幕中点
-    layer_slide(layer_window, 8, 56); // 移动窗口图层
-    layer_slide(layer_window_b[0], 168, 56); // 移动窗口图层
-    layer_slide(layer_window_b[1], 8, 116); // 移动窗口图层
-    layer_slide(layer_window_b[2], 168, 116); // 移动窗口图层
-    layer_slide(layer_console[1], 332, 176); // 移动窗口图层
-    layer_slide(layer_console[0], 32, 176); // 移动窗口图层
+    layer_slide(layer_console[1], 100, 100); // 移动窗口图层
+    layer_slide(layer_console[0], 400, 100); // 移动窗口图层
     // 实际图层高度由已有图层决定, 而不是指定值, 相同高度, 后者更低
-    layer_updown(layer_back, 0); // 切换背景图层高度
-    layer_updown(layer_console[1], 1); // 切换窗口图层高度(实际图层6)
-    layer_updown(layer_console[0], 1); // 切换窗口图层高度(实际图层5)
-    layer_updown(layer_window, 1); // 切换窗口图层高度(实际图层4)
-    layer_updown(layer_window_b[0], 1); // 切换窗口图层高度(实际图层3)
-    layer_updown(layer_window_b[1], 1); // 切换窗口图层高度(实际图层2)
-    layer_updown(layer_window_b[2], 1); // 切换窗口图层高度(实际图层1)
-    layer_updown(layer_mouse, 9); // 切换鼠标图层高度(实际图层6)
+    layer_updown(layer_back,        0); // 切换背景图层高度
+    layer_updown(layer_console[1],  1); // 切换窗口图层高度(实际图层2)
+    layer_updown(layer_console[0],  2); // 切换窗口图层高度(实际图层1)
+    layer_updown(layer_mouse,       3); // 切换鼠标图层高度(实际图层3)
 
 // 窗口图层控制
     struct LAYER *mouse_click_layer = 0; // 鼠标输入的窗口图层
-    keyboard_input_layer = layer_window; // 键盘输入的窗口图层
+    int mouse_rate = 0;
+    keyboard_input_layer = layerctl->layersorted[layerctl->top - 1]; // 键盘输入的窗口图层
+    switch_window(layerctl, 0, keyboard_input_layer);
 
 // 键盘和鼠标输入处理
     for (;;) {
@@ -295,14 +248,6 @@ void HariMain(void) {
                 /* 不同字符编码处理 */
                 if (s[0] != 0) {
                     /* 普通字符 */
-                    if (keyboard_input_layer == layer_window) {
-                        // 键盘输入窗口为layer_window: 直接显示
-                        if (cursor_x < 128) {
-                            s[1] = 0;
-                            putfonts8_asc_layer(layer_window, cursor_x, 28, COL8_000000, COL8_FFFFFF, s, 1); // 显示键盘按键
-                            cursor_x += 8; // 光标前移
-                        }
-                    }
                     if (keyboard_input_layer == layer_console[0]) {
                         // 键盘输入窗口为layer_console: 发送键盘字符到该任务绑定的中断缓冲区
                         fifo32_put(&task_console[0]->fifo, s[0] + 256); // 发送对应键盘字符的ASCII
@@ -314,13 +259,6 @@ void HariMain(void) {
                 }
                 if (i == 256 + 0x0e) {
                     /* 退格键 */
-                    if (keyboard_input_layer == layer_window) {
-                        // 键盘输入窗口为layer_window: 直接显示
-                        if (cursor_x > 8) {
-                            putfonts8_asc_layer(layer_window, cursor_x, 28, COL8_000000, COL8_FFFFFF, " ", 1); // 擦除显示的键盘按键
-                            cursor_x -= 8; // 光标后移
-                        }
-                    }
                     if (keyboard_input_layer == layer_console[0]) {
                         // 键盘输入窗口为layer_console: 发送键盘字符到该任务绑定的中断缓冲区
                         fifo32_put(&task_console[0]->fifo, 8 + 256); // 发送对应键盘字符的ASCII, ASCII中空格为8
@@ -390,6 +328,7 @@ void HariMain(void) {
                     if (layerctl->top > 2) {
                         // 倒数第二层提升到正数第二层(最底层是背景图层, 最高层是鼠标图层, 都不用变动)
                         layer_updown(layerctl->layersorted[1], layerctl->top - 1);
+                        switch_window(layerctl, keyboard_input_layer, layerctl->layersorted[layerctl->top - 1]);
                     }
                 }
                 if (i == 256 + 0x3b && key_shift !=0) {
@@ -397,8 +336,6 @@ void HariMain(void) {
                     struct TASK *task = keyboard_input_layer->task;
                     // 强制结束app时检查tss.ss0, 若为0则代表app未运行, 不能再次结束app.(启动app时会将操作系统段号放入tss.ss0, 结束app时会将tss.ss0置为0)
                     if (task != 0 && task->tss.ss0 != 0) {
-                        // 切换窗口图层
-                        switch_window(layerctl, keyboard_input_layer, 0);
                         // 打印信息到控制台
                         console_putstr0(task->console, "\nBreak(key) :\n");
                         // 改变TSS寄存器值时不能切换到其他任务
@@ -438,8 +375,8 @@ void HariMain(void) {
 
                     // 显示鼠标指针移动
                     // 计算鼠标x, y轴的数值, 基于屏幕中心点
-                    mx += mdec.x;
-                    my += mdec.y;
+                    mx += mdec.x/2;
+                    my += mdec.y/2;
                     // 防止鼠标超出屏幕
                     if (mx < 0) {
                         mx = 0;
@@ -486,7 +423,7 @@ void HariMain(void) {
                                         }
                                         if (mouse_click_layer->bxsize - 21 <= x && x < mouse_click_layer->bxsize - 5 && 5 <= y && y < 19) {
                                             /* 鼠标点击的是app窗口关闭按钮"X"": 关闭窗口 */
-                                            if (mouse_click_layer->flags & 0x10 != 0) {
+                                            if ((mouse_click_layer->flags & 0x10) != 0) {
                                                 /* 点击的是app窗口 */
                                                 // 切换窗口图层
                                                 switch_window(layerctl, keyboard_input_layer, 0);
@@ -517,40 +454,7 @@ void HariMain(void) {
                         mmx = -1;
                     }
                 }
-            } else if (i <= 1) {
-                // 光标闪烁定时器
-                // 若为0则显示黑色, 若为1则显示白色, 交替进行, 实现闪烁效果
-                if (i != 0)  {
-                    timer_init(timer, &fifo, 0);
-                    if (cursor_c >= 0) {
-                        cursor_c = COL8_000000;
-                    }
-                } else {
-                    timer_init(timer, &fifo, 1);
-                    if (cursor_c >= 0) {
-                        cursor_c = COL8_FFFFFF;
-                    }
-                }
-                timer_settime(timer, 50); // 再次倒计时0.5s
-                if (cursor_c >= 0) {
-                    boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示黑色
-                    layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
-                }
-            } else if (i == 2) {
-                // 窗口已激活, 光标闪烁
-                cursor_c = COL8_000000;
-            } else if (i == 3) {
-                // 窗口未激活, 光标停止闪烁
-                cursor_c = -1;
-                // 隐藏光标(显示成背景色白色)
-                boxfill8(layer_window->buf, layer_window->bxsize, COL8_FFFFFF, cursor_x, 28, cursor_x + 7, 43);
             }
-            // 重绘光标
-            // 是否显示光标
-            if (cursor_c >= 0) {
-                boxfill8(layer_window->buf, layer_window->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43); // 显示白色
-            }
-            layer_refresh(layer_window, cursor_x, 28, cursor_x + 8, 44); // 刷新图层
         }
     }
 }

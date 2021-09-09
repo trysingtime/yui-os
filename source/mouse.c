@@ -2,14 +2,24 @@
 
 struct FIFO32 *mousefifo; // 鼠标缓冲区地址
 int mouseoffsetdata; // 鼠标数据需加上该值放入缓冲区
+int mouse_rate = 0;
 
 /* 来自PS/2鼠标的中断(IRQ12, INT 0x2c) */
 void inthandler2c(int *esp) {
-	unsigned char data;
 	io_out8(PIC1_OCW2, 0x64); // 通知PIC1(IRQ08~15)/IRQ-12(鼠标中断)已接收到中断, 继续监听下一个中断
 	io_out8(PIC0_OCW2, 0x62); // 通知PIC0(IRQ01~07)/IRQ-02(从PIC中断)已接收到中断, 继续监听下一个中断
-	data = io_in8(PORT_KEYDAT); // 从端口0x0060(鼠标)读取一个字节
-	fifo32_put(mousefifo, mouseoffsetdata + data); // 将data(实际只有1字节)写入缓冲区
+    unsigned char data = io_in8(PORT_KEYDAT); // 从端口0x0060(鼠标)读取一个字节
+    // 减少鼠标报告频率
+    if (mouse_rate == 0) {
+        fifo32_put(mousefifo, mouseoffsetdata + data); // 将data(实际只有1字节)写入缓冲区
+    }
+    if (mouse_rate >= 7) {
+        if (mouse_rate == 9) {
+            mouse_rate = 0;
+        }
+        fifo32_put(mousefifo, mouseoffsetdata + data); // 将data(实际只有1字节)写入缓冲区
+    }
+    mouse_rate++;
 	return;
 }
 

@@ -16,9 +16,6 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
     /* 获取当前任务 */
     struct TASK *task = task_current();
     task->console = &console; // 将控制台内存地址放入TASK中, 应用程序可以通过TASK获取控制台地址, 进而调用控制台函数
-    /* 设置中断缓冲区 */
-    int fifobuf[128];
-    fifo32_init(&task->fifo, 128, fifobuf, task); // 中断到来自动唤醒task
     /* 设置定时器 */
     console.timer = timer_alloc(); // 光标闪烁定时器
     timer_init(console.timer, &task->fifo, 1);
@@ -420,17 +417,19 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
             }
             // C语言编写的app需要跳转到.hrb文件0x1b位置(该位置为JMP指令, 会再次跳转到真正的app启动点)
             start_app(0x1b, 1000 * 8 + task->selector, esp, 2000 * 8 + task->selector, &(task->tss.esp0));
+
             /* 正常返回: 新版本使用了RETF来调用app函数, app不能再使用far-RET回应, 而是直接调用asm_end_app结束程序直接返回到此处 */
             /* 强制返回: Shift + F1 组合键强制结束app也会返回此处 */
-
             // 遍历所有图层, 关闭所有绑定到控制台task的图层
             struct LAYERCTL *layerctl = (struct LAYERCTL *) *((int *) 0x0fe4); // 图层控制器地址, 操作系统启动时已将地址放入了0x0fe4
             for (i = 0; i < MAX_LAYERS; i++) {
                 struct LAYER *layer = &(layerctl->layers[i]);
-                switch_window(layerctl, keyboard_input_layer, 0);
                 // 图层绑定到"task_console"且图层为正在使用(bit1=1)的"窗口程序-app"(bit4=1), 自动关闭该图层
                 if (layer->task == task && (layer->flags & 0x11) == 0x11) {
+                    // 关闭图层
                     layer_free(layer);
+                    // 切换窗口到启动app的控制台
+                    switch_window(layerctl, keyboard_input_layer, task->console->layer);
                 }
             }
             // 中止所有使用了控制台缓冲区的app定时器

@@ -491,8 +491,7 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         // 新建窗口
         make_window8((char *) ebx + ds_base, esi, edi, (char *) ecx + ds_base, 0);
         // 显示图层
-        layer_slide(layer, 100, 100);
-        // layer_slide(layer, (layerctl->xsize - esi) / 2, (layerctl->ysize - edi) / 2); // 居中显示
+        layer_slide(layer, ((layerctl->xsize - esi) / 2) & ~3, (layerctl->ysize - edi) / 2); // 居中显示(并且起点X轴为4的倍数, 图层性能更好)
         layer_updown(layer, layerctl->top); // 置顶显示(和鼠标相同图层, 鼠标图层自动上移)
         switch_window(layerctl, console->layer, layer); // 切换窗口
         // 返回值

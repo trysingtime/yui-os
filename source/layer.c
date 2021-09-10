@@ -88,7 +88,7 @@ void layer_refresh(struct LAYER *layer, int bx0, int by0, int bx1, int by1) {
 */
 void layer_refresh_abs(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1, int h0, int h1) {
     int h, bx, by, vx, vy, bx0, by0, bx1, by1;
-    unsigned char *buf, c, sid, *vram = ctl->vram, *map = ctl->map;
+    unsigned char *buf, sid, *vram = ctl->vram, *map = ctl->map;
     struct LAYER *layer;
     // 如果范围超出画面则修正
     if (vx0 < 0) { vx0 = 0; }
@@ -112,15 +112,66 @@ void layer_refresh_abs(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1,
         if (bx1 > layer->bxsize) { bx1 = layer->bxsize; }
         if (by1 > layer->bysize) { by1 = layer->bysize; }
 
-        // 根据图层相对坐标一个个像素点绘制
-        for (by = by0; by < by1; by++) {
-            vy = layer->vy0 + by; // 确定当前要绘制的y轴点
-            for (bx = bx0; bx < bx1; bx++) {
+        if ((layer->vx0 & 3) !=0) {
+            /* 根据图层相对坐标一个个像素点绘制 */
+            for (by = by0; by < by1; by++) {
+                vy = layer->vy0 + by; // 确定当前要绘制的y轴点
+                for (bx = bx0; bx < bx1; bx++) {
+                    vx = layer->vx0 + bx; // 确定当前要绘制的x轴点
+                    if (map[vy * ctl->xsize + vx] == sid) {
+                        // map(像素点)归该图层负责才绘制
+                        vram[vy * ctl->xsize + vx] = buf[by * layer->bxsize + bx];
+                    }
+                }
+            }
+        } else {
+            /* 图层起点X轴坐标为4的倍数, 可以从一个个像素点绘制变成4个像素点绘制, 性能提高4倍 */
+            int sid4byte = sid | sid << 8 | sid << 16 | sid << 24;  // 4个sid整合成1个sid4byte
+            for (by = by0; by < by1; by++) {
+                vy = layer->vy0 + by; // 确定当前要绘制的y轴点
+
+                /* 1. 前面不能被4整除的部分:一个个像素绘制 */  
+                for (bx = bx0; bx < bx1 && (bx & 3) != 0; bx++) {
+                    vx = layer->vx0 + bx; // 确定当前要绘制的x轴点
+                    if (map[vy * ctl->xsize + vx] == sid) {
+                        // map(像素点)归该图层负责才绘制
+                        vram[vy * ctl->xsize + vx] = buf[by * layer->bxsize + bx];
+                    }
+                }
+
+                /* 2. 中间能被4整除的部分:四个像素点一组绘制 */
                 vx = layer->vx0 + bx; // 确定当前要绘制的x轴点
-                if (map[vy * ctl->xsize + vx] == sid) {
-                    // map(像素点)归该图层负责才刷新
-                    c = buf[by * layer->bxsize + bx];  // 确定当前要绘制的颜色
-                    vram[vy * ctl->xsize + vx] = c;
+                int *q = (int *) &vram[vy * ctl->xsize + vx]; // 像素点(4字节)
+                int *p = (int *) &map[vy * ctl->xsize + vx]; // 每个像素点属于哪个图层
+                int *r = (int *) &buf[by * layer->bxsize + bx]; // 每个像素点绘制哪种颜色
+                char *qc = &vram[vy * ctl->xsize + vx]; // 像素点(1字节)
+                char *pc = &map[vy * ctl->xsize + vx]; // 每个像素点属于哪个图层
+                char *rc = &buf[by * layer->bxsize + bx]; // 每个像素点绘制哪种颜色
+                int i = (bx0 + 3) / 4; // 向上取整获得第一个能被4整除的像素点
+                int j = bx1 / 4; // 向下取整获得最后一个能被4整除的像素点
+                int len = j - i; // 能被4整除的部分
+                for (i = 0; i < len; i++) {
+                    if (p[i] == sid4byte) {
+                        /* 四个像素点都属于当前目标图层: 四个像素点一起绘制 */
+                        q[i] = r[i];
+                    } else {
+                        /* 四个像素点所属图层不一致: 一个个像素点绘制 */
+                        for (j = i * 4; j < i * 4 + 4; j++) {
+                            if (pc[j] == sid) {
+                                // map(像素点)归该图层负责才绘制
+                                qc[j] = rc[j];
+                            }
+                        }
+                    }
+                }
+
+                /* 3. 后面不能被4整除的部分:一个个像素绘制 */
+                for (bx += len * 4; bx < bx1; bx++) {
+                    vx = layer->vx0 + bx; // 确定当前要绘制的x轴点
+                    if (map[vy * ctl->xsize + vx] == sid) {
+                        // map(像素点)归该图层负责才绘制
+                        vram[vy * ctl->xsize + vx] = buf[by * layer->bxsize + bx];
+                    }
                 }
             }
         }
@@ -136,7 +187,7 @@ void layer_refresh_abs(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1,
     - h0: 刷新大于此层的图层
 */
 void layer_refresh_map(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1, int h0) {
-    int h, bx, by, vx, vy, bx0, by0, bx1, by1;
+    int h, bx, by, vx, vy, bx0, by0, bx1, by1, sid4byte, *p;
     unsigned char *buf, c, sid, *map = ctl->map;
     struct LAYER *layer;
     // 如果范围超出画面则修正
@@ -161,21 +212,46 @@ void layer_refresh_map(struct LAYERCTL *ctl, int vx0, int vy0, int vx1, int vy1,
         if (bx1 > layer->bxsize) { bx1 = layer->bxsize; }
         if (by1 > layer->bysize) { by1 = layer->bysize; }
 
-        // 根据图层相对坐标一个个像素点绘制
-        for (by = by0; by < by1; by++) {
-            vy = layer->vy0 + by; // 确定当前要绘制的y轴点
-            for (bx = bx0; bx < bx1; bx++) {
-                vx = layer->vx0 + bx; // 确定当前要绘制的x轴点
-                if (vx0 <= vx && vx < vx1 && vy0 <= vy && vy < vy1) {
-                    // 只刷新指定范围vx0<=vx<vx1, vy0<=vy<vy1
+        // 绘制
+        if (layer->col_inv != -1) {
+            /* 有透明色图层: 需要检查颜色 */
+            for (by = by0; by < by1; by++) {
+                vy = layer->vy0 + by; // 确定当前要绘制的y轴点
+                for (bx = bx0; bx < bx1; bx++) {
+                    vx = layer->vx0 + bx; // 确定当前要绘制的x轴点
                     c = buf[by * layer->bxsize + bx];  // 确定当前要绘制的颜色
                     if (c != layer->col_inv) {
                         // 图层颜色和内容颜色不一致时才绘制, 也就是说图层颜色和内容颜色一致时透明
                         map[vy * ctl->xsize + vx] = sid; // 指定map(像素点)由图层sid负责
                     }
                 }
+            }               
+        } else {
+            /* 无透明色图层: 去掉颜色检查提高性能 */
+            if ((layer->vx0 & 3) == 0 && (bx0 & 3) == 0 && (bx1 & 3) == 0) {
+                /* 图层vx0, bx0, bx1都为4的倍数, 可以从一个个像素点绘制变成4个像素点绘制, 性能提高4倍 */
+                bx1 = (bx1 - bx0) / 4; // 图层每4个像素作为单位
+                sid4byte = sid | sid << 8 | sid << 16 | sid << 24; // 4个sid整合成1个sid4byte
+                for (by = by0; by < by1; by++) {
+                    vy = layer->vy0 + by; // 确定当前要绘制的y轴点
+                    vx = layer->vx0 + bx0; // 确定当前要绘制的x轴起点
+                    p = (int *) &map[vy * ctl->xsize + vx]; // 要绘制的内存起点
+                    for (bx = 0; bx < bx1; bx++) {
+                        p[bx] = sid4byte; // 从内存起点开始每4个像素点绘制一次
+                    }
+                }              
+            } else {
+                /* 根据图层相对坐标一个个像素点绘制 */
+                for (by = by0; by < by1; by++) {
+                    vy = layer->vy0 + by; // 确定当前要绘制的y轴点
+                    for (bx = bx0; bx < bx1; bx++) {
+                        vx = layer->vx0 + bx; // 确定当前要绘制的x轴点
+                        map[vy * ctl->xsize + vx] = sid; // 指定map(像素点)由图层sid负责
+                    }
+                }     
             }
         }
+
     }
     return;
 }

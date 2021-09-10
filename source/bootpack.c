@@ -57,7 +57,9 @@ void HariMain(void) {
     init_keyboard(&fifo, 256); // 初始化键盘控制电路(包含鼠标控制电路)
     struct MOUSE_DEC mdec;
     enable_mouse(&fifo, 512, &mdec); // 启用鼠标本身
-    int mmx = -1, mmy = -1; // 初始化鼠标移动模式: -1: 通常模式, >0: 窗口移动模式
+    int mx = (bootinfo -> screenx - 16) / 2; // 鼠标坐标x: 计算屏幕中间点(减去指针本身)
+    int my = (bootinfo -> screeny - 28 - 16) / 2; // 鼠标坐标y: 计算屏幕中间点(减去任务栏和指针本身)
+    int new_mouse_x = -1, new_mouse_y = -1; // 鼠标移动后,图层刷新前的新坐标
 
 // 初始化键盘锁定键LED状态(CapsLock, NumLock, ScrollLock)
 /*
@@ -102,9 +104,6 @@ void HariMain(void) {
     layer_init(layer_back, buf_back, bootinfo->screenx, bootinfo->screeny, -1); // 初始化背景图层
     init_screen8(buf_back, bootinfo -> screenx, bootinfo -> screeny); // 绘制背景
     // 绘制鼠标坐标(背景图层)
-    int mx, my;
-    mx = (bootinfo -> screenx - 16) / 2; // 计算屏幕中间点(减去指针本身)
-    my = (bootinfo -> screeny - 28 - 16) / 2; // 计算屏幕中间点(减去任务栏和指针本身)
     sprintf(s, "(%3d, %3d)", mx, my);
     putfonts8_asc_layer(layer_back, 0, 0, COL8_FFFFFF, COL8_008484, s, 10);
     // 绘制内存信息(背景图层)
@@ -185,9 +184,11 @@ void HariMain(void) {
 
 // 窗口图层控制
     struct LAYER *mouse_click_layer = 0; // 鼠标输入的窗口图层
-    int mouse_rate = 0;
     keyboard_input_layer = layerctl->layersorted[layerctl->top - 1]; // 键盘输入的窗口图层
     switch_window(layerctl, 0, keyboard_input_layer);
+    int old_mouse_x = -1, old_mouse_y = -1; // 鼠标拖动窗口前, 鼠标的坐标
+    int old_window_x = 0, old_window_y = 0; // 鼠标拖动窗口前, 窗口的坐标
+    int new_window_x = 0x7fffffff, new_window_y = 0; // 鼠标拖动窗口后, 窗口的坐标
 
 // 键盘和鼠标输入处理
     for (;;) {
@@ -210,9 +211,22 @@ void HariMain(void) {
         io_cli();
         if (fifo32_status(&fifo) == 0) {
             // 缓冲区为空
-            task_sleep(task_a); // 若没有中断, 则task_a休眠, 休眠后再开启中断, 防止无法休眠
-            // io_stihlt(); // 区别与"io_sti();io_hlt()", CPU规范中如果STI紧跟HLT, 那么两条指令间不受理中断
-            io_sti(); // 性能测试时使用, 高速计数器需要全力运行, 因此取消io_hlt();
+            if (new_mouse_x >= 0) {
+                /* 绘制鼠标移动 */
+                io_sti();
+                layer_slide(layer_mouse, new_mouse_x, new_mouse_y);
+                new_mouse_x = -1;
+            } else if (new_window_x != 0x7fffffff) {
+                /* 绘制窗口拖动 */
+                io_sti();
+                layer_slide(mouse_click_layer, new_window_x, new_window_y);
+                new_window_x = 0x7fffffff;
+            } else {
+                /* 休眠 */
+                task_sleep(task_a); // 若没有中断, 则task_a休眠, 休眠后再开启中断, 防止无法休眠
+                // io_stihlt(); // 区别与"io_sti();io_hlt()", CPU规范中如果STI紧跟HLT, 那么两条指令间不受理中断
+                io_sti(); // 性能测试时使用, 高速计数器需要全力运行, 因此取消io_hlt();
+            }
         } else {
             // 缓冲区存在信息
             i = fifo32_get(&fifo);
@@ -394,11 +408,12 @@ void HariMain(void) {
                     // 显示鼠标坐标数据
                     sprintf(s, "(%3d, %3d)", mx, my);
                     putfonts8_asc_layer(layer_back, 0, 0, COL8_FFFFFF, COL8_008484, s, 20);
-                    // 移动鼠标
-                    layer_slide(layer_mouse, mx, my); // 显示鼠标
+                    // 移动鼠标(此处仅记录坐标, FIFO空闲时再绘制)
+                    new_mouse_x = mx;
+                    new_mouse_y = my;
                     // 鼠标左键
                     if ((mdec.btn & 0x01) != 0) {
-                        if (mmx < 0) {
+                        if (old_mouse_x < 0) {
                             /* 窗口切换 */
                             /* 从上到下遍历所有图层, 切换到鼠标点击的像素点所属的图层 */
                             int j;
@@ -416,10 +431,13 @@ void HariMain(void) {
                                             switch_window(layerctl, keyboard_input_layer, mouse_click_layer);
                                         }
                                         if (3 <= x && x < mouse_click_layer->bxsize - 3 && 3 <= y && y < 21) {
-                                            /* 鼠标点击的是窗口标题栏: 进入窗口移动模式, 记录下移动前的坐标 */
-                                            // 移动窗口前的坐标 
-                                            mmx = mx;
-                                            mmy = my;
+                                            /* 鼠标点击的是窗口标题栏: 进入窗口拖动模式, 记录下移动前的坐标 */
+                                            // 拖动前窗口坐标 
+                                            old_window_x = mouse_click_layer->vx0;
+                                            old_window_y = mouse_click_layer->vy0;
+                                            // 拖动前鼠标坐标
+                                            old_mouse_x = mx;
+                                            old_mouse_y = my;
                                         }
                                         if (mouse_click_layer->bxsize - 21 <= x && x < mouse_click_layer->bxsize - 5 && 5 <= y && y < 19) {
                                             /* 鼠标点击的是app窗口关闭按钮"X"": 关闭窗口 */
@@ -444,14 +462,18 @@ void HariMain(void) {
                                 }
                             }
                         } else {
-                            /* 窗口移动 */
-                            layer_slide(mouse_click_layer, mouse_click_layer->vx0 + mx - mmx, mouse_click_layer->vy0 + my - mmy); // 当前坐标-移动前的坐标
-                            mmx = mx;
-                            mmy = my;
+                            /* 窗口拖动(此处仅记录坐标, FIFO空闲时或者鼠标左键松开时再绘制窗口拖动) */
+                            // x轴移动量保证为4的倍数(先加2能确保向上/向下取整概率相等), 能提高图层性能
+                            new_window_x = (old_window_x + mx - old_mouse_x + 2) & ~3;
+                            new_window_y = old_window_y + my - old_mouse_y;
                         }
                     } else {
-                        /* 没有按下左键, 返回通常模式 */
-                        mmx = -1;
+                        /* 没有按下左键, 返回通常模式, 并马上绘制窗口拖动 */
+                        old_mouse_x = -1;
+                        if (new_window_x != 0x7fffffff) { // 0x7fffffff是默认值, 不为默认值说明有变动
+                            layer_slide(mouse_click_layer, new_window_x, new_window_y);
+                            new_window_x = 0x7fffffff;
+                        }
                     }
                 }
             }

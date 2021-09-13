@@ -356,6 +356,7 @@ struct TSS32 {
     - tss: TSS结构
     - console: 任务绑定的控制台地址
     - ds_base: 任务绑定的app数据段起始地址
+    - console_stack: 任务绑定的控制台栈地址
 */
 struct TASK {
     int selector, flags;
@@ -363,7 +364,7 @@ struct TASK {
     struct FIFO32 fifo;
     struct TSS32 tss;
     struct CONSOLE *console;
-    int ds_base;
+    int ds_base, console_stack;
 };
 /*
     任务层级
@@ -432,6 +433,7 @@ void cmd_mem(struct CONSOLE *console, unsigned int memorytotal);
 void cmd_cls(struct CONSOLE *console);
 void cmd_dir(struct CONSOLE *console);
 void cmd_type(struct CONSOLE *console, int *fat, char *cmdline);
+void cmd_exit(struct CONSOLE *console, int *fat);
 int cmd_app(struct CONSOLE *console, int *fat, char *cmdline);
 int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
 int *inthandler0d(int *esp);

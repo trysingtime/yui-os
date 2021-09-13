@@ -70,10 +70,14 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
                 // 隐藏光标(显示成背景色白色)
                 boxfill8(layer->buf, layer->bxsize, COL8_000000, console.cursor_x, 28, console.cursor_x + 7, 43);
             }
+            if (i == 4) {
+                // 关闭控制台自身
+                cmd_exit(&console, fat);
+            }
             if (256 <= i && i <= 511) {
                 // 键盘缓冲区处理(taska发送过来的)
                 if (i == 256 + 8) {
-                    /* 退格键 */
+                    /* 退格键(0x08) */
                     if (console.cursor_x > 16) {
                         // 使用空格擦除当前光标
                         console_putchar(&console, ' ', 0);
@@ -81,7 +85,7 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
                         console.cursor_x -= 8;
                     }
                 } else if (i == 256 + 10) {
-                    /* 回车键 */
+                    /* 回车键(0x0a) */
                     // 使用空格擦除当前光标
                     console_putchar(&console, ' ', 0);
                     // 获取的指令最后添加0
@@ -240,6 +244,9 @@ void console_runcmd(char *cmdline, struct CONSOLE *console, int *fat, unsigned i
     } else if (strncmp(cmdline, "type ", 5) == 0) {
         /* type指令 */
         cmd_type(console, fat, cmdline);
+    } else if (strcmp(cmdline, "exit") == 0) {
+        /* exit指令 */
+        cmd_exit(console, fat);       
     }  else if (cmdline[0] != 0) {
         /* app指令 */
         int r = cmd_app(console, fat, cmdline);
@@ -356,6 +363,35 @@ void cmd_type(struct CONSOLE *console, int *fat, char *cmdline) {
     }
     console_newline(console);
     return;
+}
+
+/*
+    exit指令, 退出控制台
+    - console: 执行指令的控制台
+    - fat: 解压缩后的FAT信息地址
+*/
+void cmd_exit(struct CONSOLE *console, int *fat) {
+    // 中止控制台绑定的定时器
+    timer_cancel(console->timer);
+    // 释放控制台读取的FAT文件信息
+    struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
+    memory_free_4k(mng, (int) fat, 4 * 2880);
+    // 关闭控制台(控制台无法关闭自身, 将关闭指令发给主任务缓冲区, 让主任务关闭本控制台)
+    /* 获取要发送的目的地 */
+    struct FIFO32 *fifo = (struct FIFO32 *) *((int *) 0xfec); // 通用缓冲区fifo
+    /* 获取要发送的指令 */
+    struct LAYERCTL *layerctl = (struct LAYERCTL *) *((int *) 0x0fe4); // 图层控制器地址, 操作系统启动时已将地址放入了0x0fe4
+    int seq = console->layer - layerctl->layers; // 当前图层序号
+    int cmd = seq + 768; // 要发送的指令(768+图层序号 = 768~1023)
+    /* 发送 */
+    io_cli();
+    fifo32_put(fifo, cmd);
+    io_sti();
+    // 休眠控制台任务
+    struct TASK *task = task_current();
+    for (;;) {
+        task_sleep(task);
+    }
 }
 
 /*

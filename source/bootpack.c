@@ -1,10 +1,6 @@
 #include "bootpack.h"
 #include <stdio.h> // sprintf()
 
-struct LAYER *open_console(struct LAYERCTL *layerctl, unsigned int memtotal);
-void close_console(struct LAYER *layer);
-void close_console_task(struct TASK *task);
-
 #define KEYCMD_LED      0xed
 struct LAYER *keyboard_input_layer; // 键盘输入的窗口图层
 struct LAYER *mouse_click_layer; // 鼠标输入的窗口图层
@@ -306,6 +302,8 @@ void HariMain(void) {
                         task->tss.eax = (int) &(task->tss.esp0); // asm_end_app函数所需的参数
                         task->tss.eip = (int) asm_end_app; // 调用asm_end_app函数
                         io_sti();
+                        // 唤醒app让其结束自身
+                        task_run(task, -1, 0);
                     }
                 }
                 if (i == 256 + 0x3c && key_shift !=0) {
@@ -416,6 +414,8 @@ void HariMain(void) {
                                                 task->tss.eax = (int) &(task->tss.esp0); // asm_end_app函数所需的参数
                                                 task->tss.eip = (int) asm_end_app; // 调用asm_end_app函数
                                                 io_sti();
+                                                // 唤醒app让其结束自身
+                                                task_run(task, -1, 0);
                                             } else if ((mouse_click_layer->flags & 0x20) != 0) {
                                                 /* 点击的是console窗口 */
                                                 struct TASK *task = mouse_click_layer->task; // TASK地址
@@ -445,93 +445,29 @@ void HariMain(void) {
                     }
                 }
             } else if (768 <= i && i <= 1023) {
-                /* 关闭控制台 */
+                /* 通过图层序号关闭控制台 */
                 if (keyboard_input_layer != 0) {
                     switch_window(layerctl, keyboard_input_layer, 0);
                 }
                 close_console(layerctl->layers + (i - 768)); // 关闭指定序号(i-768)的控制台图层
+            } else if (1024 <= i && i <= 2023) {
+                /* 通过任务序号关闭控制台, 只关闭任务 */
+                if (keyboard_input_layer != 0) {
+                    switch_window(layerctl, keyboard_input_layer, 0);
+                }
+                close_console_task(taskctl->tasks + (i - 1024)); // 关闭指定序号(i-768)的控制台图层
+            } else if (2024 <= i && i <= 2279) {
+                /* 通过图层序号关闭控制台, 只关闭图层 */
+                if (keyboard_input_layer != 0) {
+                    switch_window(layerctl, keyboard_input_layer, 0);
+                }
+                // 要关闭的图层
+                struct LAYER *layer = layerctl->layers + (i - 2024);
+                // 释放图层缓冲区buf
+                memory_free_4k(mng, (int) layer->buf, 256 * 165);
+                // 释放图层
+                layer_free(layer);
             }
         }
     }
-}
-
-/*
-    打开一个新控制台
-    - 创建一个新的控制台
-    - 控制台五要素: 图层layer, 图层缓冲区buf, 任务task, 任务栈stack, 任务缓冲区fifo
-    - layerctl: 图层控制器
-    - memorytotal: 总内存
-*/
-struct LAYER *open_console(struct LAYERCTL *layerctl, unsigned int memorytotal) {
-    // 内存控制器
-    struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR;
-    // 控制台图层初始化
-    struct LAYER *layer_console = layer_alloc(layerctl);
-    unsigned char *buf_console = (unsigned char *) memory_alloc_4k(mng, 256 * 165);
-    layer_init(layer_console, buf_console, 256, 165, -1);
-    layer_console->flags |= 0x20; // 标记为窗口程序-console(0x10(bit4):窗口程序-app,0x20(bit5):窗口程序-console)
-    make_window8(buf_console, 256, 165, "console", 0);
-    make_textbox8(layer_console, 8, 28, 240, 128, COL8_000000);
-    // 控制台任务初始化
-    struct TASK *task_console = task_alloc();
-    // 任务绑定栈
-    task_console->console_stack = memory_alloc_4k(mng, 64 * 1024); // 任务使用的栈(64KB)
-    // 任务TSS寄存器初始化
-    task_console->tss.esp = task_console->console_stack + 64 * 1024; // esp存入栈顶(栈末尾高位地址)的地址
-    task_console->tss.eip = (int) &console_task;
-    task_console->tss.es = 1 * 8;
-    task_console->tss.cs = 2 * 8; // 使用段号2
-    task_console->tss.ss = 1 * 8;
-    task_console->tss.ds = 1 * 8;
-    task_console->tss.fs = 1 * 8;
-    task_console->tss.gs = 1 * 8;
-    // 往任务传值
-    task_console->tss.esp -= 4; // 将要放入4字节参数, 压栈4字节
-    *((int *) task_console->tss.esp) = (int) memorytotal; // 将内存信息入栈
-    task_console->tss.esp -= 4; // 将要放入4字节参数, 压栈4字节
-    *((int *) task_console->tss.esp) = (int) layer_console; // 将图层地址入栈
-    task_console->tss.esp -= 4; // 方法调用时返回地址保存在栈顶[ESP], 第一个参数保存在[ESP+4], 因此为了伪造方法调用, 压栈4字节
-    // 启动任务
-    task_run(task_console, 2, 2); // task层级为2, 优先级为2
-    // 图层绑定任务(绑定后任务被关闭图层也将被关闭)
-    layer_console->task = task_console;
-    // 任务绑定中断缓冲区
-    int *fifo_console = (int *) memory_alloc_4k(mng, 128 * 4);
-    fifo32_init(&task_console->fifo, 128, fifo_console, task_console); // 中断到来自动唤醒task
-    return layer_console;
-}
-
-/*
-    关闭绑定指定图层的控制台任务
-    - 释放控制台图层, 图层缓冲区, 任务, 任务栈, 任务缓冲区
-    - layer: 控制台绑定的指定图层
-*/
-void close_console(struct LAYER *layer) {
-    struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
-    struct TASK *task = layer->task; // 控制台任务
-    // 释放图层缓冲区
-    memory_free_4k(mng, (int) layer->buf, 256 * 165);
-    // 释放图层
-    layer_free(layer);
-    // 释放任务
-    close_console_task(task);
-    return;
-}
-
-/*
-    关闭指定的控制台任务
-    - 释放控制台任务, 任务栈, 任务缓冲区
-    - task: 指定控制台任务
-*/
-void close_console_task(struct TASK *task) {
-    struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
-    // 休眠任务
-    task_sleep(task);
-    // 释放任务栈
-    memory_free_4k(mng, task->console_stack, 64 * 1024);
-    // 释放任务缓冲区
-    memory_free_4k(mng, (int) task->fifo.buf, 128 * 4);
-    // 释放任务
-    task->flags = 0;
-    return;
 }

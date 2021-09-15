@@ -16,10 +16,14 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
     /* 获取当前任务 */
     struct TASK *task = task_current();
     task->console = &console; // 将控制台内存地址放入TASK中, 应用程序可以通过TASK获取控制台地址, 进而调用控制台函数
+    
     /* 设置定时器 */
-    console.timer = timer_alloc(); // 光标闪烁定时器
-    timer_init(console.timer, &task->fifo, 1);
-    timer_settime(console.timer, 50); // 0.05s
+    if (console.layer != 0) {
+        /* 控制台有绑定图层才需要设置光标(存在不可见控制台) */
+        console.timer = timer_alloc(); // 光标闪烁定时器
+        timer_init(console.timer, &task->fifo, 1);
+        timer_settime(console.timer, 50); // 0.05s
+    }
 
     /* 获取FAT信息, 用于文件相关的命令 */
     struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
@@ -43,7 +47,7 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
             // 定时器中断处理
             int i = fifo32_get(&task->fifo);
             io_sti();
-            if (i <= 1) {
+            if (i <= 1 && console.layer != 0) {
                 // 光标闪烁定时器
                 // 若为0则显示黑色, 若为1则显示白色, 交替进行, 实现闪烁效果
                 if (i != 0)  {
@@ -68,7 +72,9 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
                 // 窗口未激活, 光标停止闪烁
                 console.cursor_color = -1;
                 // 隐藏光标(显示成背景色白色)
-                boxfill8(layer->buf, layer->bxsize, COL8_000000, console.cursor_x, 28, console.cursor_x + 7, 43);
+                if (console.layer != 0) {
+                    boxfill8(layer->buf, layer->bxsize, COL8_000000, console.cursor_x, 28, console.cursor_x + 7, 43);
+                }
             }
             if (i == 4) {
                 // 关闭控制台自身
@@ -94,6 +100,10 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
                     console_newline(&console);
                     // 执行指令
                     console_runcmd(cmdline, &console, fat, memorytotal);
+                    if (console.layer == 0) {
+                        /* 控制台不可见, 执行完指令后关闭控制台 */
+                        cmd_exit(&console, fat);
+                    }
                     // 显示新一行提示符
                     console_putchar(&console, '>', 1);
                 } else {
@@ -107,11 +117,14 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
                 }
             }
             // 重绘光标
-            if (console.cursor_color >= 0) {
-                // 是否显示光标
-                boxfill8(layer->buf, layer->bxsize, console.cursor_color, console.cursor_x, console.cursor_y, console.cursor_x + 7, console.cursor_y + 15); // 显示白色
+            if (console.layer != 0) {
+                /* 控制台有绑定图层才显示(存在不可见控制台) */
+                if (console.cursor_color >= 0) {
+                    // 是否显示光标
+                    boxfill8(console.layer->buf, console.layer->bxsize, console.cursor_color, console.cursor_x, console.cursor_y, console.cursor_x + 7, console.cursor_y + 15); // 显示白色
+                }
+                layer_refresh(console.layer, console.cursor_x, console.cursor_y, console.cursor_x + 8, console.cursor_y + 16); // 刷新图层                
             }
-            layer_refresh(layer, console.cursor_x, console.cursor_y, console.cursor_x + 8, console.cursor_y + 16); // 刷新图层                
         }
     }
 }
@@ -132,7 +145,10 @@ void console_putchar(struct CONSOLE *console, int character, char move) {
         // 制表符用于对其字符, linux每4个字符位置一个制表位, windows则是8个字符, 此处取4个字符
         for (;;) {
             // 循环绘制空格
-            putfonts8_asc_layer(console->layer, console->cursor_x, console->cursor_y, COL8_FFFFFF, COL8_000000, " ", 1);
+            if (console->layer != 0) {
+                // 控制台有绑定图层才显示(存在不可见控制台)
+                putfonts8_asc_layer(console->layer, console->cursor_x, console->cursor_y, COL8_FFFFFF, COL8_000000, " ", 1);
+            }
             console->cursor_x += 8;
             if (console->cursor_x == 8 + 240) {
                 // 到达最右端换行
@@ -153,7 +169,10 @@ void console_putchar(struct CONSOLE *console, int character, char move) {
     } else {
         /* 普通字符 */
         // 绘制字符
-        putfonts8_asc_layer(console->layer, console->cursor_x, console->cursor_y, COL8_FFFFFF, COL8_000000, s, 1);
+        if (console->layer != 0) {
+            // 控制台有绑定图层才显示(存在不可见控制台)        
+            putfonts8_asc_layer(console->layer, console->cursor_x, console->cursor_y, COL8_FFFFFF, COL8_000000, s, 1);
+        }
         // 显示字符后光标是否后移
         if (move != 0) {
             console->cursor_x += 8;
@@ -176,22 +195,25 @@ void console_newline(struct CONSOLE *console) {
         console->cursor_y += 16;
     } else {
         // 窗口滚动
-        // 遍历每一行, 将每个像素向上移动一行(16像素距离)
-        struct LAYER *layer = console->layer;
-        int x, y;
-        for (y = 28; y < 28 + 112; y++) {
-            for (x = 8; x < 8 + 240; x++) {
-                layer->buf[x + y * layer->bxsize] = layer->buf[x + (y + 16) * layer->bxsize];
+        if (console->layer != 0) {
+            /* 控制台有绑定图层才显示(存在不可见控制台) */
+            // 遍历每一行, 将每个像素向上移动一行(16像素距离)
+            struct LAYER *layer = console->layer;
+            int x, y;
+            for (y = 28; y < 28 + 112; y++) {
+                for (x = 8; x < 8 + 240; x++) {
+                    layer->buf[x + y * layer->bxsize] = layer->buf[x + (y + 16) * layer->bxsize];
+                }
             }
-        }
-        // 将最后一行每个像素涂成黑色
-        for (y = 28 + 112; y < 28 + 128; y++) {
-            for (x = 8; x < 8 + 240; x++) {
-                layer->buf[x + y * layer->bxsize] = COL8_000000;
+            // 将最后一行每个像素涂成黑色
+            for (y = 28 + 112; y < 28 + 128; y++) {
+                for (x = 8; x < 8 + 240; x++) {
+                    layer->buf[x + y * layer->bxsize] = COL8_000000;
+                }
             }
+            // 重绘整个图层
+            layer_refresh(layer, 8, 28, 8 + 240, 28 + 128);
         }
-        // 重绘整个图层
-        layer_refresh(layer, 8, 28, 8 + 240, 28 + 128);
     }
     // 光标重置到行首
     console->cursor_x = 8;
@@ -246,7 +268,13 @@ void console_runcmd(char *cmdline, struct CONSOLE *console, int *fat, unsigned i
         cmd_type(console, fat, cmdline);
     } else if (strcmp(cmdline, "exit") == 0) {
         /* exit指令 */
-        cmd_exit(console, fat);       
+        cmd_exit(console, fat);
+    } else if (strncmp(cmdline, "start ", 6) == 0) {
+        /* start指令 */
+        cmd_start(console, cmdline, memorytotal);       
+    } else if (strncmp(cmdline, "ncst ", 5) == 0) {
+        /* ncst指令 */
+        cmd_ncst(console, cmdline, memorytotal);      
     }  else if (cmdline[0] != 0) {
         /* app指令 */
         int r = cmd_app(console, fat, cmdline);
@@ -372,17 +400,25 @@ void cmd_type(struct CONSOLE *console, int *fat, char *cmdline) {
 */
 void cmd_exit(struct CONSOLE *console, int *fat) {
     // 中止控制台绑定的定时器
-    timer_cancel(console->timer);
+    if (console->layer !=0) {
+        /* 控制台有绑定图层才需要中止定时器 */
+        timer_cancel(console->timer);
+    }
     // 释放控制台读取的FAT文件信息
     struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
     memory_free_4k(mng, (int) fat, 4 * 2880);
     // 关闭控制台(控制台无法关闭自身, 将关闭指令发给主任务缓冲区, 让主任务关闭本控制台)
     /* 获取要发送的目的地 */
-    struct FIFO32 *fifo = (struct FIFO32 *) *((int *) 0xfec); // 通用缓冲区fifo
+    struct FIFO32 *fifo = (struct FIFO32 *) *((int *) 0xfec); // 通用缓冲区地址, 操作系统启动时已将地址放入了0x0fec
     /* 获取要发送的指令 */
     struct LAYERCTL *layerctl = (struct LAYERCTL *) *((int *) 0x0fe4); // 图层控制器地址, 操作系统启动时已将地址放入了0x0fe4
     int seq = console->layer - layerctl->layers; // 当前图层序号
     int cmd = seq + 768; // 要发送的指令(768+图层序号 = 768~1023)
+    if (console->layer == 0) {
+        /* 控制台没有界面(图层)则根据任务序号关闭控制台 */
+        seq = task_current() - taskctl->tasks; // 当前任务序号
+        cmd = seq + 1024; // 要发送的指令(1024+任务序号 = 1024~2023)
+    }
     /* 发送 */
     io_cli();
     fifo32_put(fifo, cmd);
@@ -392,6 +428,52 @@ void cmd_exit(struct CONSOLE *console, int *fat) {
     for (;;) {
         task_sleep(task);
     }
+}
+
+/*
+    start指令, 打开新控制台并执行指令
+    - console: 执行start指令的控制台
+    - cmdline: 输入到控制台的指令
+    - memorytotal: 系统总内存
+*/
+void cmd_start(struct CONSOLE *console, char *cmdline, int memorytotal) {
+    // 打开新控制台
+    struct LAYERCTL *layerctl = (struct LAYERCTL *) *((int *) 0x0fe4); // 图层控制器地址, 操作系统启动时已将地址放入了0x0fe4
+    struct LAYER *layer = open_console(layerctl, memorytotal);
+    layer_slide(layer, keyboard_input_layer->vx0 + 20, keyboard_input_layer->vy0 + 20);
+    layer_updown(layer, layerctl->top);
+    switch_window(layerctl, keyboard_input_layer, layer);
+    // 将输入的指令逐字复制到新的控制台
+    int i;
+    for (i = 6; cmdline[i] != 0; i++) {
+        fifo32_put(&layer->task->fifo, cmdline[i] + 256);
+    }
+    // 输入回车键到新控制台
+    fifo32_put(&layer->task->fifo, 10 + 256); // 回车键
+    // 空一行
+    console_newline(console);
+    return;
+}
+
+/*
+    ncst指令(no console start), 不显示新控制台执行指令
+    - console: 执行ncst指令的控制台
+    - cmdline: 输入到控制台的指令
+    - memorytotal: 系统总内存
+*/
+void cmd_ncst(struct CONSOLE *console, char *cmdline, int memorytotal) {
+    // 仅打开新控制台任务但不显示
+    struct TASK *task = open_console_task(0, memorytotal); // 控制台图层为0
+    // 将输入的指令逐字复制到新的控制台任务
+    int i;
+    for (i = 5; cmdline[i] != 0; i++) {
+        fifo32_put(&task->fifo, cmdline[i] + 256);
+    }
+    // 输入回车键到新控制台
+    fifo32_put(&task->fifo, 10 + 256); // 回车键
+    // 空一行
+    console_newline(console);
+    return;
 }
 
 /*
@@ -462,10 +544,16 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
                 struct LAYER *layer = &(layerctl->layers[i]);
                 // 图层绑定到"task_console"且图层为正在使用(bit1=1)的"窗口程序-app"(bit4=1), 自动关闭该图层
                 if (layer->task == task && (layer->flags & 0x11) == 0x11) {
+                    // 判断启动app的控制台有没界面
+                    if (task->console->layer == 0) {
+                        // 没有界面, 则切换窗口到正数第二层
+                        switch_window(layerctl, keyboard_input_layer, layerctl->layersorted[layerctl->top - 1]);
+                    } else {
+                        // 有界面, 则切换窗口到启动app的控制台
+                        switch_window(layerctl, keyboard_input_layer, task->console->layer);
+                    }
                     // 关闭图层
                     layer_free(layer);
-                    // 切换窗口到启动app的控制台
-                    switch_window(layerctl, keyboard_input_layer, task->console->layer);
                 }
             }
             // 中止所有使用了控制台缓冲区的app定时器
@@ -529,7 +617,7 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         // 显示图层
         layer_slide(layer, ((layerctl->xsize - esi) / 2) & ~3, (layerctl->ysize - edi) / 2); // 居中显示(并且起点X轴为4的倍数, 图层性能更好)
         layer_updown(layer, layerctl->top); // 置顶显示(和鼠标相同图层, 鼠标图层自动上移)
-        switch_window(layerctl, console->layer, layer); // 切换窗口
+        switch_window(layerctl, keyboard_input_layer, layer); // 切换窗口
         // 返回值
         reg[7] = (int) layer; // 只返回图层地址到EAX寄存器(返回值默认为eax寄存器)
     } else if (edx == 6) {
@@ -598,6 +686,25 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
             if (i == 3) {
                 // 窗口未激活, 光标停止闪烁
                 console->cursor_color = -1;
+            }
+            if (i == 4) {
+                /* 关闭调用本app的控制台窗口 */
+                // 中止控制台绑定的定时器
+                timer_cancel(console->timer);
+                // 关闭控制台(控制台无法关闭自身, 将关闭指令发给主任务缓冲区, 让主任务关闭本控制台)
+                /* 获取要发送的目的地 */
+                struct FIFO32 *fifo = (struct FIFO32 *) *((int *) 0xfec); // 通用缓冲区地址, 操作系统启动时已将地址放入了0x0fec
+                /* 获取要发送的指令 */
+                struct LAYERCTL *layerctl = (struct LAYERCTL *) *((int *) 0x0fe4); // 图层控制器地址, 操作系统启动时已将地址放入了0x0fe4
+                int seq = console->layer - layerctl->layers; // 当前图层序号
+                int cmd = seq + 2024; // 要发送的指令(2024+图层序号 = 2024~2279)
+                io_cli();
+                // 发送指令
+                fifo32_put(fifo, cmd); 
+                // 解绑控制台图层
+                console->layer = 0;
+                io_sti();
+
             }
             if (256 <= i && i <= 511) {
                 /* 键盘数据 */
@@ -731,5 +838,96 @@ void api_linewin(struct LAYER *layer, int x0, int y0, int x1, int y1, int col) {
         x += dx;
         y += dy;
     }
+    return;
+}
+
+/*
+    创建并显示一个新控制台
+    - 控制台五要素: 图层layer, 图层缓冲区buf, 任务task, 任务栈stack, 任务缓冲区fifo
+    - layerctl: 图层控制器
+    - memorytotal: 总内存
+*/
+struct LAYER *open_console(struct LAYERCTL *layerctl, unsigned int memorytotal) {
+    struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
+    // 控制台图层初始化
+    struct LAYER *layer_console = layer_alloc(layerctl);
+    unsigned char *buf_console = (unsigned char *) memory_alloc_4k(mng, 256 * 165);
+    layer_init(layer_console, buf_console, 256, 165, -1);
+    layer_console->flags |= 0x20; // 标记为窗口程序-console(0x10(bit4):窗口程序-app,0x20(bit5):窗口程序-console)
+    make_window8(buf_console, 256, 165, "console", 0);
+    make_textbox8(layer_console, 8, 28, 240, 128, COL8_000000);
+    // 控制台任务初始化
+    layer_console->task = open_console_task(layer_console, memorytotal);
+    return layer_console;
+}
+
+/*
+    创建一个新控制台任务
+    - layer_console: 控制台任务绑定的图层(若为0则不绑定图层,即不可见控制台)
+    - memorytotal: 总内存
+*/
+struct TASK *open_console_task(struct LAYER *layer_console, unsigned int memorytotal) {
+    struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
+    // 控制台任务初始化
+    struct TASK *task_console = task_alloc();
+    // 任务绑定栈
+    task_console->console_stack = memory_alloc_4k(mng, 64 * 1024); // 任务使用的栈(64KB)
+    // 任务TSS寄存器初始化
+    task_console->tss.esp = task_console->console_stack + 64 * 1024; // esp存入栈顶(栈末尾高位地址)的地址
+    task_console->tss.eip = (int) &console_task;
+    task_console->tss.es = 1 * 8;
+    task_console->tss.cs = 2 * 8; // 使用段号2
+    task_console->tss.ss = 1 * 8;
+    task_console->tss.ds = 1 * 8;
+    task_console->tss.fs = 1 * 8;
+    task_console->tss.gs = 1 * 8;
+    // 往任务传值
+    task_console->tss.esp -= 4; // 将要放入4字节参数, 压栈4字节
+    *((int *) task_console->tss.esp) = (int) memorytotal; // 将内存信息入栈
+    task_console->tss.esp -= 4; // 将要放入4字节参数, 压栈4字节
+    *((int *) task_console->tss.esp) = (int) layer_console; // 将图层地址入栈
+    task_console->tss.esp -= 4; // 方法调用时返回地址保存在栈顶[ESP], 第一个参数保存在[ESP+4], 因此为了伪造方法调用, 压栈4字节
+    // 启动任务
+    task_run(task_console, 2, 2); // task层级为2, 优先级为2
+    // 图层绑定任务(绑定后任务被关闭图层也将被关闭)
+    layer_console->task = task_console;
+    // 任务绑定中断缓冲区
+    int *fifo_console = (int *) memory_alloc_4k(mng, 128 * 4);
+    fifo32_init(&task_console->fifo, 128, fifo_console, task_console); // 中断到来自动唤醒task
+    return task_console;
+}
+
+/*
+    关闭绑定指定图层的控制台任务
+    - 释放控制台图层, 图层缓冲区, 任务, 任务栈, 任务缓冲区
+    - layer: 控制台绑定的指定图层
+*/
+void close_console(struct LAYER *layer) {
+    struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
+    struct TASK *task = layer->task; // 控制台任务
+    // 释放图层缓冲区
+    memory_free_4k(mng, (int) layer->buf, 256 * 165);
+    // 释放图层
+    layer_free(layer);
+    // 释放任务
+    close_console_task(task);
+    return;
+}
+
+/*
+    关闭指定的控制台任务
+    - 释放控制台任务, 任务栈, 任务缓冲区
+    - task: 指定控制台任务
+*/
+void close_console_task(struct TASK *task) {
+    struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
+    // 休眠任务
+    task_sleep(task);
+    // 释放任务栈
+    memory_free_4k(mng, task->console_stack, 64 * 1024);
+    // 释放任务缓冲区
+    memory_free_4k(mng, (int) task->fifo.buf, 128 * 4);
+    // 释放任务
+    task->flags = 0;
     return;
 }

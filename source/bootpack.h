@@ -391,6 +391,7 @@ struct TASKCTL {
     struct TASKLEVEL level[MAX_TASK_LEVELS];
     struct TASK tasks[MAX_TASKS];
 };
+extern struct TASKCTL *taskctl;
 extern struct TIMER *task_timer;
 struct TASK *task_current(void);
 struct TASK *taskctl_init(struct MEMMNG *memmng);
@@ -434,11 +435,17 @@ void cmd_cls(struct CONSOLE *console);
 void cmd_dir(struct CONSOLE *console);
 void cmd_type(struct CONSOLE *console, int *fat, char *cmdline);
 void cmd_exit(struct CONSOLE *console, int *fat);
+void cmd_start(struct CONSOLE *console, char *cmdline, int memorytotal);
+void cmd_ncst(struct CONSOLE *console, char *cmdline, int memorytotal);
 int cmd_app(struct CONSOLE *console, int *fat, char *cmdline);
 int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
 int *inthandler0d(int *esp);
 int *inthandler0c(int *esp);
 void api_linewin(struct LAYER *layer, int x0, int y0, int x1, int y1, int col);
+struct LAYER *open_console(struct LAYERCTL *layerctl, unsigned int memorytotal);
+struct TASK *open_console_task(struct LAYER *layer_console, unsigned int memorytotal);
+void close_console(struct LAYER *layer);
+void close_console_task(struct TASK *task);
 
 /* file.c */
 /*

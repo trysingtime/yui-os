@@ -168,11 +168,11 @@ void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int acce
 #define LIMIT_GDT		0x0000ffff // GDT上限地址
 #define ADR_BOTPAK		0x00280000 // 段号2起始地址
 #define LIMIT_BOTPAK	0x0007ffff // 段号上限地址
-#define AR_DATA32_RW	0x4092
-#define AR_CODE32_ER	0x409a
-#define AR_INTGATE32	0x008e
+#define AR_LDT  		0x0082
 #define AR_TSS32		0x0089
 #define AR_INTGATE32	0x008e
+#define AR_DATA32_RW	0x4092
+#define AR_CODE32_ER	0x409a
 
 /* int.c */
 
@@ -337,6 +337,7 @@ void inthandler20(int *esp);
 #define TASK_GDT0       3 // GDT从几号开始分配给TSS
 /*
     TSS(task status segment)(32位, 26个int成员, 总计104字节): 任务状态段, 需要在GDT注册才能使用
+    在任务控制器初始化时将TSS注册到GDT(3~1002)
     CPU任务切换时, 将寄存器的值保存在TSS中, 后续切换回任务时, 再读取回去
     如果一条JMP指令的目的地址段是TSS, 则解析为任务切换
 */
@@ -353,7 +354,8 @@ struct TSS32 {
     - level: 当前任务属于哪个层级(level)
     - priority: 任务优先级(任务切换间隔, 执行多少秒后切换到下一个任务, 单位: priority/100s)
     - fifo: 任务绑定的中断缓冲区
-    - tss: TSS结构
+    - tss: TSS结构(104字节)
+    - ldt: LDT结构(两个段16字节)
     - console: 任务绑定的控制台地址
     - ds_base: 任务绑定的app数据段起始地址
     - console_stack: 任务绑定的控制台栈地址
@@ -363,6 +365,7 @@ struct TASK {
     int level, priority;
     struct FIFO32 fifo;
     struct TSS32 tss;
+    struct SEGMENT_DESCRIPTOR ldt[2];
     struct CONSOLE *console;
     int ds_base, console_stack;
 };

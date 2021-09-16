@@ -34,6 +34,14 @@ IDT(interrupt descriptor table): 中断记录表, IDT由GATE_DESCRIPTOR(8字节)
 - 应用程序专用段将会限制app使用IN/OUT/HLT/CLI/STI/CALL等一系列操作, 也无法修改段寄存器为操作系统的段号
 - 应用程序专用段不允许操作系统far-CALL/far-JMP应用程序, 因此通过RETF(far-CALL的回应,本质是从栈中将地址POP,然后far-JMP)来实现
 - 应用程序专用段允许应用程序far-CALL/far-JMP操作系统
+
+TSS(task status segment)(32位, 26个int成员, 总计104字节): 任务状态段, 需要在GDT注册才能使用
+- 在任务控制器初始化时将TSS注册到GDT(3~1002)
+- CPU任务切换时, 将寄存器的值保存在TSS中, 后续切换回任务时, 再读取回去
+- 如果一条JMP指令的目的地址段是TSS, 则解析为任务切换
+
+LDT(local segment descriptor table): 局部段号记录表
+
 */
 
 #include "bootpack.h"

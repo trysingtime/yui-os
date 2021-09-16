@@ -100,8 +100,10 @@ struct TASK *taskctl_init(struct MEMMNG *memmng) {
     // 初始化所有任务(TSS)
     for (i = 0; i < MAX_TASKS; i++) {
             taskctl->tasks[i].flags = 0; // 状态: 未激活
-            taskctl->tasks[i].selector = (TASK_GDT0 + i) * 8; // 段号依次增加
-            set_segmdesc(gdt + TASK_GDT0 + i, 103, (int) &taskctl->tasks[i].tss, AR_TSS32); // TSS段注册到GDT
+            taskctl->tasks[i].selector = (TASK_GDT0 + i) * 8; // TSS段号依次增加
+            taskctl->tasks[i].tss.ldtr = (TASK_GDT0 + MAX_TASKS + i) * 8; // LDT段号依次增加
+            set_segmdesc(gdt + TASK_GDT0 + i, 103, (int) &taskctl->tasks[i].tss, AR_TSS32); // TSS段注册到GDT(3~1002)
+            set_segmdesc(gdt + TASK_GDT0 + MAX_TASKS + i, 15, (int) &taskctl->tasks[i].ldt, AR_LDT); // LDT段注册到GDT(1003~2002)
     }
     // 主任务(当前流程也是任务)
     struct TASK *task;
@@ -149,7 +151,6 @@ struct TASK *task_alloc(void) {
             task->flags = 1; // 状态从未激活转为正在使用
             // 初始化TSS
             task->tss.ss0 = 0; // 将tss.ss0置为0, 强制结束app时会检查该值, 若为0则代表app未运行, 不能再次结束app
-            task->tss.ldtr = 0;
             task->tss.iomap = 0x40000000;
             // 初始化TSS的寄存器
             task->tss.eflags = 0x00000202; // 中断标志IF置1, 允许中断, STI后EFLAGS的值就是这个, 此处手动设置

@@ -40,18 +40,11 @@ default :
 	$(MAKE) img
 
 # 应用程序
-app : normal.app
-normal.app : a.hrb  hello4.hrb hello5.hrb winhelo2.hrb stars.hrb lines.hrb walk.hrb noodle.hrb beepdown.hrb color.hrb color2.hrb
-crack.app : crack1.hrb crack2.hrb crack3.hrb crack4.hrb crack5.hrb
+app : normal.app hackapp.app
+normal.app : a.hrb hello4.hrb hello5.hrb winhelo2.hrb stars.hrb lines.hrb walk.hrb noodle.hrb color.hrb color2.hrb
+crack.app : crack1.hrb crack2.hrb crack3.hrb crack4.hrb crack5.hrb 
+hackapp.app: crack7.hrb
 bug.app : bug1.hrb bug2.hrb bug3.hrb
-
-## 汇编语言
-%.hrb : app\%.nas Makefile
-	$(NASK) $< target\$@ target\$*.lst
-%.hrb : crack\%.nas Makefile
-	$(NASK) $< target\$@ target\$*.lst
-%.hrb : bug\%.nas Makefile
-	$(NASK) $< target\$@ target\$*.lst
 
 ## 汇编语言API
 api.obj : source\api.nas Makefile
@@ -64,6 +57,18 @@ api.obj : source\api.nas Makefile
 	$(CC1) -o target\$@ $<
 %.gas : bug\%.c Makefile
 	$(CC1) -o target\$@ $<
+
+## 汇编语言(nas->hrb)
+%.hrb : app\%.nas Makefile
+	$(NASK) $< target\$@ target\$*.lst
+%.hrb : crack\%.nas Makefile
+	$(NASK) $< target\$@ target\$*.lst
+%.hrb : bug\%.nas Makefile
+	$(NASK) $< target\$@ target\$*.lst
+
+## 汇编语言(通过通配符nas->obj)
+%.obj : hackapp\%.nas Makefile
+	$(NASK) $< target\$@ target\$*.lst
 
 ## 汇编语言API+C语言
 %.bim : %.obj api.obj Makefile
@@ -86,13 +91,13 @@ hankaku.bin : source\hankaku.txt Makefile
 hankaku.obj : hankaku.bin Makefile
 	$(BIN2OBJ) target\hankaku.bin target\hankaku.obj _hankaku
 
-## 汇编语言
-naskfunc.obj : source\naskfunc.nas Makefile
-	$(NASK) source\naskfunc.nas target\naskfunc.obj target\naskfunc.lst
-
 ## C语言(通过通配符c->gas->nas->obj)
 %.gas : source\%.c source\bootpack.h Makefile
 	$(CC1) -o target\$@ $<
+
+## 汇编语言
+naskfunc.obj : source\naskfunc.nas Makefile
+	$(NASK) source\naskfunc.nas target\naskfunc.obj target\naskfunc.lst
 
 ## TXT文件+汇编语言+C语言
 bootpack.bim : $(OBJS_BOOTPACK) Makefile
@@ -118,9 +123,9 @@ haribote.img : ipl10.bin haribote.sys app Makefile
 		copy from:target/lines.hrb to:@: \
 		copy from:target/walk.hrb to:@: \
 		copy from:target/noodle.hrb to:@: \
-		copy from:target/beepdown.hrb to:@: \
 		copy from:target/color.hrb to:@: \
 		copy from:target/color2.hrb to:@: \
+		copy from:target/crack7.hrb to:@: \
 		copy from:source/ipl10.nas to:@: \
 		copy from:make.bat to:@: \
 		imgout:target/haribote.img

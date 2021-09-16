@@ -521,20 +521,19 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
             int datastart       = *((int *) (p + 0x0014)); // hrb 文件内数据部分的起始地址
             // 在TSS中注册操作系统的段号和ESP(将操作系统的ESP和段号先后压入TSS栈esp0)
             struct TASK *task = task_current();
-            // 将app代码段注册到GDT, 段号1003(段号1~2由dsctbl.c使用, 段号3~1002由multitask.c使用), 段属性加上0x60, 将段设置成应用程序专用段
-            struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) ADR_GDT; // GDT地址
-            set_segmdesc(gdt + 1000 + task->selector / 8, fileinfo->size - 1, (int) p, AR_CODE32_ER + 0x60);
-            // 将app数据段注册到GDT, 段号1004, 大小segment_size, 段属性加上0x60, 将段设置成应用程序专用段
+            // 将app代码段注册到GDT, 段号1005(段号1~2由dsctbl.c使用, 段号3~1002由TSS使用, 段号1003~2002由LDT使用, 其中主任务1003, 段号1004哨兵任务), 段属性加上0x60, 将段设置成应用程序专用段
+            set_segmdesc(task->ldt + 0, fileinfo->size - 1, (int) p, AR_CODE32_ER + 0x60); // LDT(两个段16字节), 第一个段信息用于app代码段
+            // 将app数据段注册到GDT, 段号20045, 大小segment_size, 段属性加上0x60, 将段设置成应用程序专用段
             char *q = (char *) memory_alloc_4k(mng, segment_size);
             task->ds_base = (int) q; // 将app数据段起始地址放入TASK中, 便于app调用系统API
-            set_segmdesc(gdt + 2000 + task->selector / 8, segment_size - 1, (int) q, AR_DATA32_RW + 0x60);
+            set_segmdesc(task->ldt + 1, segment_size - 1, (int) q, AR_DATA32_RW + 0x60); // LDT(两个段16字节), 第二个段信息用于app数据段
             // 将hrb文件的数据部分复制到数据段(存放在堆栈后面, 因此形成: 数据段=栈+hrb文件数据)
             int i;
             for (i = 0; i < datasize; i++) {
                 q[esp + i] = p[datastart + i];
             }
             // C语言编写的app需要跳转到.hrb文件0x1b位置(该位置为JMP指令, 会再次跳转到真正的app启动点)
-            start_app(0x1b, 1000 * 8 + task->selector, esp, 2000 * 8 + task->selector, &(task->tss.esp0));
+            start_app(0x1b, 0 * 8 + 4, esp, 1 * 8 + 4, &(task->tss.esp0)); // 加4表示该段号是LDT段号
 
             /* 正常返回: 新版本使用了RETF来调用app函数, app不能再使用far-RET回应, 而是直接调用asm_end_app结束程序直接返回到此处 */
             /* 强制返回: Shift + F1 组合键强制结束app也会返回此处 */

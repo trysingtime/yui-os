@@ -4,8 +4,9 @@ void api_putstrwin(int win, int x, int y, int col, int len, char *str);
 void api_boxfillwin(int win, int x0, int y0, int x1, int y1, int col);
 void api_end(void);
 
-char buf[150 * 50];
+//char buf[150 * 50]; // 使用静态变量将会编译为obj占用代码段内存
 void HariMain(void) {
+    char buf[150 * 50]; // 使用内部变量使用栈空间, 此处大于4KB因此编译器将会调用_alloca函数
     int win; // 返回的图层地址
     win = api_openwin(buf, 150, 50, -1, "hello");
     api_boxfillwin(win, 8, 36, 141, 43, 3 /*黄色*/);

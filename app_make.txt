@@ -4,8 +4,7 @@ TOOLPATH = $(ROOT)tolset/z_tools/
 ## Makefile
 MAKE     = $(TOOLPATH)make.exe -r
 ## c to gas(cc1基于gcc改造,gcc以gas汇编语言为基础)
-INCPATH  = $(ROOT)tolset/z_tools/haribote/
-CC1      = $(TOOLPATH)cc1.exe -I$(INCPATH) -Os -Wall -quiet
+CC1      = $(TOOLPATH)cc1.exe -I$(ROOT)lib -Os -Wall -quiet
 ## gas to nask(不同的汇编语言翻译)
 GAS2NASK = $(TOOLPATH)gas2nask.exe -a
 ## nask to obj(目标文件, 特殊的机器语言, 不能运行)
@@ -47,7 +46,7 @@ $(APP).bim : $(APP).obj $(ROOT)api/api.lib Makefile $(ROOT)app_make.txt
 %.nas : %.gas Makefile $(ROOT)app_make.txt
 	$(GAS2NASK) $< $@
 
-%.gas : %.c Makefile $(ROOT)app_make.txt
+%.gas : %.c $(ROOT)/api/api.h Makefile $(ROOT)app_make.txt
 	$(CC1) -o $@ $<
 
 ## 运行app

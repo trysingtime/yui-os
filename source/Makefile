@@ -9,8 +9,7 @@ TOOLPATH = $(ROOT)tolset/z_tools/
 ## Makefile
 MAKE     = $(TOOLPATH)make.exe -r
 ## c to gas(cc1基于gcc改造,gcc以gas汇编语言为基础)
-INCPATH  = $(ROOT)tolset/z_tools/haribote/
-CC1      = $(TOOLPATH)cc1.exe -I$(INCPATH) -Os -Wall -quiet
+CC1      = $(TOOLPATH)cc1.exe -I$(ROOT)lib -Os -Wall -quiet
 ## gas to nask(不同的汇编语言翻译)
 GAS2NASK = $(TOOLPATH)gas2nask.exe -a
 ## nask to obj(目标文件, 特殊的机器语言, 不能运行)
@@ -71,14 +70,13 @@ hankaku.obj : hankaku.bin Makefile
 %.nas : %.gas Makefile
 	$(GAS2NASK) $(TARGETPATH)$< $(TARGETPATH)$@
 %.gas : %.c bootpack.h Makefile
-	$(CC1) -o  $(TARGETPATH)$@ $<
+	$(CC1) -o $(TARGETPATH)$@ $<
 
 ## 汇编语言(nas->obj)
 naskfunc.obj : naskfunc.nas Makefile
 	$(NASK) naskfunc.nas $(TARGETPATH)naskfunc.obj $(TARGETPATH)naskfunc.lst
 
 clean :
-	-$(DEL) ..\target\*.bin
 	-$(DEL) ..\target\*.lst
 	-$(DEL) ..\target\*.gas
 	-$(DEL) ..\target\*.nas
@@ -89,4 +87,5 @@ clean :
 
 src_only :
 	$(MAKE) clean
+	-$(DEL) ..\target\*.bin
 	-$(DEL) ..\target\haribote.sys

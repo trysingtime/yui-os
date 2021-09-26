@@ -1,1 +1,9 @@
 target/
+*.gas
+*.lst
+*.obj
+*.map
+*.bim
+*.bin
+*.hrb
+*.lib

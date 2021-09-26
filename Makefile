@@ -53,6 +53,9 @@ haribote.img : target/ipl10.bin target/haribote.sys $(wildcard app/*.obj) Makefi
 		copy from:app/beepdown/beepdown.hrb to:@: \
 		copy from:app/color/color.hrb to:@: \
 		copy from:app/color2/color2.hrb to:@: \
+		copy from:app/sosu/sosu.hrb to:@: \
+		copy from:app/sosu2/sosu2.hrb to:@: \
+		copy from:app/sosu3/sosu3.hrb to:@: \
 		imgout:haribote.img
 
 ## 启动程序加载器+操作系统
@@ -76,6 +79,9 @@ application :
 	$(MAKE) -C app/beepdown
 	$(MAKE) -C app/color
 	$(MAKE) -C app/color2
+	$(MAKE) -C app/sosu
+	$(MAKE) -C app/sosu2
+	$(MAKE) -C app/sosu3
 
 clean :
 	$(MAKE) -C source		clean
@@ -94,6 +100,9 @@ clean :
 	$(MAKE) -C app/beepdown	clean
 	$(MAKE) -C app/color	clean
 	$(MAKE) -C app/color2	clean
+	$(MAKE) -C app/sosu		clean
+	$(MAKE) -C app/sosu2	clean
+	$(MAKE) -C app/sosu3	clean
 
 src_only :
 	$(MAKE) -C source		src_only
@@ -112,4 +121,7 @@ src_only :
 	$(MAKE) -C app/beepdown	src_only
 	$(MAKE) -C app/color	src_only
 	$(MAKE) -C app/color2	src_only
+	$(MAKE) -C app/sosu		src_only
+	$(MAKE) -C app/sosu2	src_only
+	$(MAKE) -C app/sosu3	src_only
 	-$(DEL) haribote.img

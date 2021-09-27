@@ -3,15 +3,17 @@
 [BITS 32]                           ; 设定成32位机器语言模式
 
 ; 编译成obj文件的信息
-[FILE "api014.nas"]                    ; 源文件名
-        GLOBAL _api_closewin        ; 函数名
+[FILE "api025.nas"]                    ; 源文件名
+        GLOBAL _api_fread              ; 函数名
 ; 代码段
 [SECTION .text]                     
-; 关闭窗口图层(edx:14,ebx:窗口图层地址)
-_api_closewin:          ; void api_closewin(int win);
+; 文件读取(edx:25,eax:文件缓冲区地址,ebx:读取文件目的地址,ecx:最大读取字节数,eax(返回值):本次读取到的字节数)
+_api_fread:             ; int api_fread(char *buf, int maxsize, int fhandle);
         PUSH            EBX
-        MOV             EDX,14
+        MOV             EDX,25
         MOV             EBX,[ESP+8]
+        MOV             ECX,[ESP+12]
+        MOV             EAX,[ESP+16]
         INT             0x40
         POP             EBX
         RET

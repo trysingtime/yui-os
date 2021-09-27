@@ -359,6 +359,9 @@ struct TSS32 {
     - console: 任务绑定的控制台地址
     - ds_base: 任务绑定的app数据段起始地址
     - console_stack: 任务绑定的控制台栈地址
+    - fhandle: 任务绑定的文件缓冲区地址(可以使用数组表示多个缓冲区)
+    - fat: 任务绑定的fat起始地址
+    - cmdline: 当前控制台输入的指令
 */
 struct TASK {
     int selector, flags;
@@ -368,6 +371,9 @@ struct TASK {
     struct SEGMENT_DESCRIPTOR ldt[2];
     struct CONSOLE *console;
     int ds_base, console_stack;
+    struct FILEHANDLE *fhandle;
+    int *fat;
+    char *cmdline;
 };
 /*
     任务层级
@@ -426,6 +432,17 @@ struct CONSOLE {
     struct LAYER *layer;
     int cursor_x, cursor_y, cursor_color;
     struct TIMER *timer;
+};
+/*
+    文件缓冲区: 打开的文件将缓冲到此处
+    - buf: 缓冲区起始地址
+    - size: 缓冲文件大小
+    - pos: 缓冲文件当前定位
+*/
+struct FILEHANDLE {
+    char *buf;
+    int size;
+    int pos;
 };
 void console_task(struct LAYER *layer_back, unsigned int memorytotal);
 void console_putchar(struct CONSOLE *console, int character, char move);

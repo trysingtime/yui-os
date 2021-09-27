@@ -16,7 +16,7 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
     /* 获取当前任务 */
     struct TASK *task = task_current();
     task->console = &console; // 将控制台内存地址放入TASK中, 应用程序可以通过TASK获取控制台地址, 进而调用控制台函数
-    
+
     /* 设置定时器 */
     if (console.layer != 0) {
         /* 控制台有绑定图层才需要设置光标(存在不可见控制台) */
@@ -29,12 +29,22 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
     struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
     int *fat = (int *) memory_alloc_4k(mng, 4 * 2880); // 软盘共2880扇区, 每个扇区对应一个FAT信息, 此处使用int(4字节)保存FAT
     file_readfat(fat, (unsigned char *) (ADR_DISKIMG + 0x000200)); // 软盘FAT地址为0x0200~0x13ff
+    task->fat = fat;
+
+    /* 文件缓冲区(8个), 打开的文件将缓冲到此处 */
+    struct FILEHANDLE fhandle[8];
+    int i;
+    for (i = 0; i < 8; i++) {
+        fhandle[i].buf = 0;
+    }
+    task->fhandle = fhandle;
 
     /* 显示提示符 */
     console_putchar(&console, '>', 1);
     
     /* 存放输入的指令 */
     char cmdline[30];
+    task->cmdline = cmdline;
 
     /* 处理中断 */
     for (;;) {
@@ -263,9 +273,9 @@ void console_runcmd(char *cmdline, struct CONSOLE *console, int *fat, unsigned i
     } else if (strcmp(cmdline, "dir") == 0) {
         /* dir指令 */
         cmd_dir(console);
-    } else if (strncmp(cmdline, "type ", 5) == 0) {
+    // } else if (strncmp(cmdline, "type ", 5) == 0) {
         /* type指令 */
-        cmd_type(console, fat, cmdline);
+        // cmd_type(console, fat, cmdline);
     } else if (strcmp(cmdline, "exit") == 0) {
         /* exit指令 */
         cmd_exit(console, fat);
@@ -555,6 +565,14 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
                     layer_free(layer);
                 }
             }
+            // 遍历所有文件缓冲区, 关闭任务所打开的文件
+            for (i = 0; i < 8; i++) {
+                if (task->fhandle[i].buf != 0) {
+                    // 释放文件缓冲区内存
+                    memory_free_4k(mng, (int) task->fhandle[i].buf, task->fhandle[i].size);
+                    task->fhandle[i].buf = 0;
+                }
+            }
             // 中止所有使用了控制台缓冲区的app定时器
             timer_cannel_with_fifo(&task->fifo);
             // 释放app数据段内存
@@ -745,6 +763,98 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
             i = io_in8(0x61);
             io_out8(0x61, (i | 0x03) & 0x0f); // 蜂鸣器开关端口0x61(|0x03 &0x0f: 开启)
         }
+    } else if (edx == 21) {
+        /* 打开文件(edx:21,ebx:文件名,eax(返回值):文件缓冲区地址) */
+        // 默认返回打开文件失败(返回0)
+        reg[7] = 0;
+        // 获取未被使用的文件缓冲区
+        int i;
+        for (i = 0; i < 8; i++) {
+            if (task->fhandle[i].buf == 0) {
+                break;
+            }
+        }
+        if (i < 8) {
+            // 根据文件名查找文件
+            struct FILEINFO *finfo = file_search((char *) ebx + ds_base, (struct FILEINFO *) (ADR_DISKIMG + 0x002600), 224);
+            if (finfo!= 0) {
+                // 若找到文件, 则将文件内容读取到文件缓冲区
+                struct FILEHANDLE *fh = &task->fhandle[i];
+                struct MEMMNG *mng = (struct MEMMNG *)MEMMNG_ADDR;
+                fh->buf = (char *) memory_alloc_4k(mng, finfo->size);
+                fh->size = finfo->size;
+                fh->pos = 0;
+                fiel_loadfile(finfo->clustno, finfo->size, fh->buf, task->fat, (char *)(ADR_DISKIMG + 0x3e00));
+                // 返回文件缓冲区地址
+                reg[7] = (int) fh;
+            }
+        }
+    } else if (edx == 22) {
+        /* 关闭文件(edx:22,eax:文件缓冲区地址) */
+        struct FILEHANDLE *fh = (struct FILEHANDLE *) eax;
+        // 释放掉指定的文件缓冲区
+        struct MEMMNG *mng = (struct MEMMNG *)MEMMNG_ADDR;
+        memory_free_4k(mng, (int) fh->buf, fh->size);
+        fh->buf = 0;
+    } else if (edx == 23) {
+        /* 文件定位(edx:23,eax:文件缓冲区地址,ecx:定位模式(0:定位起点为文件开头,1:定位起点为当前访问位置,2:定位起点为文件末尾)),ebx:定位偏移量 */
+        struct FILEHANDLE *fh = (struct FILEHANDLE *) eax;
+        // 修改文件定位时的起点位置
+        if (ecx == 0) {
+            /* 定位起点为文件开头 */
+            fh->pos = ebx;
+        } else if (ecx == 1) {
+            /* 定位起点为当前访问位置 */
+            fh->pos += ebx;
+        } else if (ecx == 2) {
+            /* 定位起点为文件末尾 */
+            fh->pos = fh->size + ebx;
+        }
+        if (fh->pos < 0) { fh->pos = 0; }
+        if (fh->pos > fh->size) { fh->pos = fh->size; }
+    } else if (edx == 24) {
+        /* 获取文件大小(edx:24,eax:文件缓冲区地址,ecx:文件大小获取模式(0:普通文件大小,1:当前读取位置到文件开头起算的偏移量,2:当前读取位置到文件末尾起算的偏移量),eax(返回值):文件大小) */
+        struct FILEHANDLE *fh = (struct FILEHANDLE *) eax;
+        if (ecx == 0) {
+            /* 普通文件大小 */
+            reg[7] = fh->size;
+        } else if (ecx == 1) {
+            /* 当前读取位置到文件开头起算的偏移量 */
+            reg[7] = fh->pos;
+        } else if (ecx == 2) {
+            /* 当前读取位置到文件末尾起算的偏移量 */
+            reg[7] = fh->pos - fh->size;
+        }
+    } else if (edx == 25) {
+        /* 文件读取(edx:25,eax:文件缓冲区地址,ebx:读取文件目的地址,ecx:最大读取字节数,eax(返回值):本次读取到的字节数) */
+        struct FILEHANDLE *fh = (struct FILEHANDLE *) eax;
+        // 根据指定读取字节数, 将文件内容从文件缓冲区读取到目的地址`
+        int i;
+        for (i = 0; i < ecx; i++) {
+            if (fh->pos == fh->size) {
+                break;
+            }
+            *((char *) ebx + ds_base + i) = fh->buf[fh->pos];
+            fh->pos++;
+        }
+        // 返回读取的字节数
+        reg[7] = i;
+    } else if (edx == 26) {
+        /* 获取控制台当前指令(edx:26,eax:命令行缓冲区地址,ecx:最大存放字节数,eax(返回值):实际存放字节数) */
+        // 将指令一个个字节读取到指定缓冲区
+        int i = 0;
+        for (;;) {
+            *((char *) ebx + ds_base + i) = task->cmdline[i];
+            if (task->cmdline[i] == 0) {
+                break;
+            }
+            if (i >= ecx) {
+                break;
+            }
+            i++;
+        }
+        // 返回实际存放了多少字节
+        reg[7] = i;
     }
     return 0;
 }

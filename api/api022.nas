@@ -3,15 +3,13 @@
 [BITS 32]                           ; 设定成32位机器语言模式
 
 ; 编译成obj文件的信息
-[FILE "api014.nas"]                    ; 源文件名
-        GLOBAL _api_closewin        ; 函数名
+[FILE "api022.nas"]                    ; 源文件名
+        GLOBAL _api_fclose             ; 函数名
 ; 代码段
 [SECTION .text]                     
-; 关闭窗口图层(edx:14,ebx:窗口图层地址)
-_api_closewin:          ; void api_closewin(int win);
-        PUSH            EBX
-        MOV             EDX,14
-        MOV             EBX,[ESP+8]
+; 关闭文件(edx:22,eax:文件缓冲区地址)
+_api_fclose:              ; void api_fclose(int fhandle);
+        MOV             EDX,22
+        MOV             EAX,[ESP+4]
         INT             0x40
-        POP             EBX
         RET

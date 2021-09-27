@@ -3,7 +3,7 @@
 [BITS 32]                           ; 设定成32位机器语言模式
 
 ; 编译成obj文件的信息
-[FILE "api.nas"]                    ; 源文件名
+[FILE "api019.nas"]                    ; 源文件名
         GLOBAL _api_freetimer       ; 函数名
 ; 代码段
 [SECTION .text]                     

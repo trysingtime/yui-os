@@ -56,6 +56,8 @@ haribote.img : target/ipl10.bin target/haribote.sys $(wildcard app/*.obj) Makefi
 		copy from:app/sosu/sosu.hrb to:@: \
 		copy from:app/sosu2/sosu2.hrb to:@: \
 		copy from:app/sosu3/sosu3.hrb to:@: \
+		copy from:app/typeipl/typeipl.hrb to:@: \
+		copy from:app/type/type.hrb to:@: \
 		imgout:haribote.img
 
 ## 启动程序加载器+操作系统
@@ -82,6 +84,8 @@ application :
 	$(MAKE) -C app/sosu
 	$(MAKE) -C app/sosu2
 	$(MAKE) -C app/sosu3
+	$(MAKE) -C app/typeipl
+	$(MAKE) -C app/type
 
 clean :
 	$(MAKE) -C source		clean
@@ -103,6 +107,8 @@ clean :
 	$(MAKE) -C app/sosu		clean
 	$(MAKE) -C app/sosu2	clean
 	$(MAKE) -C app/sosu3	clean
+	$(MAKE) -C app/typeipl	clean
+	$(MAKE) -C app/type		clean
 
 src_only :
 	$(MAKE) -C source		src_only
@@ -124,4 +130,6 @@ src_only :
 	$(MAKE) -C app/sosu		src_only
 	$(MAKE) -C app/sosu2	src_only
 	$(MAKE) -C app/sosu3	src_only
+	$(MAKE) -C app/typeipl	src_only
+	$(MAKE) -C app/type		src_only
 	-$(DEL) haribote.img

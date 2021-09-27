@@ -38,3 +38,15 @@ void api_settimer(int timer, int time);
 void api_freetimer(int timer);
 /* 显示蜂鸣器发声(edx:20,eax:声音频率(mHz, 4400000mHz = 440Hz, 频率为0标识停止发声)) */
 void api_beep(int tone);
+/* 打开文件(edx:21,ebx:文件名,eax(返回值):文件缓冲区地址) */
+int api_fopen(char *fname);
+/* 关闭文件(edx:22,eax:文件缓冲区地址) */
+void api_fclose(int fhandle);
+/* 文件定位(edx:23,eax:文件缓冲区地址,ecx:定位模式(0:定位起点为文件开头,1:定位起点为当前访问位置,2:定位起点为文件末尾)),ebx:定位偏移量 */
+void api_fseek(int fhandle, int offset, int mode);
+/* 获取文件大小(edx:24,eax:文件缓冲区地址,ecx:文件大小获取模式(0:普通文件大小,1:当前读取位置到文件开头起算的偏移量,2:当前读取位置到文件末尾起算的偏移量),eax(返回值):文件大小) */
+int api_fsize(int fhandle, int mode);
+/* 文件读取(edx:25,eax:文件缓冲区地址,ebx:读取文件目的地址,ecx:最大读取字节数,eax(返回值):本次读取到的字节数) */
+int api_fread(char *buf, int maxsize, int fhandle);
+/* 获取控制台当前指令(edx:26,eax:命令行缓冲区地址,ecx:最大存放字节数,eax(返回值):实际存放字节数) */
+int api_cmdline(char *buf, int maxsize);

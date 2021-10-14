@@ -56,7 +56,6 @@ haribote.img : target/ipl20.bin target/haribote.sys $(wildcard app/*.obj) Makefi
 		copy from:app/sosu/sosu.hrb to:@: \
 		copy from:app/sosu2/sosu2.hrb to:@: \
 		copy from:app/sosu3/sosu3.hrb to:@: \
-		copy from:app/typeipl/typeipl.hrb to:@: \
 		copy from:app/type/type.hrb to:@: \
 		copy from:app/iroha/iroha.hrb to:@: \
 		copy from:app/chklang/chklang.hrb to:@: \
@@ -88,7 +87,6 @@ application :
 	$(MAKE) -C app/sosu
 	$(MAKE) -C app/sosu2
 	$(MAKE) -C app/sosu3
-	$(MAKE) -C app/typeipl
 	$(MAKE) -C app/type
 	$(MAKE) -C app/iroha
 	$(MAKE) -C app/chklang
@@ -113,7 +111,6 @@ clean :
 	$(MAKE) -C app/sosu		clean
 	$(MAKE) -C app/sosu2	clean
 	$(MAKE) -C app/sosu3	clean
-	$(MAKE) -C app/typeipl	clean
 	$(MAKE) -C app/type		clean
 	$(MAKE) -C app/iroha	clean
 	$(MAKE) -C app/chklang	clean
@@ -138,7 +135,6 @@ src_only :
 	$(MAKE) -C app/sosu		src_only
 	$(MAKE) -C app/sosu2	src_only
 	$(MAKE) -C app/sosu3	src_only
-	$(MAKE) -C app/typeipl	src_only
 	$(MAKE) -C app/type		src_only
 	$(MAKE) -C app/iroha	src_only
 	$(MAKE) -C app/chklang	src_only

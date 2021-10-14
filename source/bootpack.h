@@ -100,7 +100,8 @@ void init_palette(void); // 初始化调色盘
 void set_palette(int start, int end, unsigned char *rgb); // 设置调色盘
 void boxfill8(unsigned char *vram, int xsize, unsigned char c, int x0, int y0, int x1, int y1); // 绘制矩形
 void init_screen8(char *vram, int screenx, int screeny); // 初始化屏幕
-void putfont8(char *vram, int screenx, int x, int y, char color, char *font); // 绘制字符
+void putfont8(char *vram, int screenx, int x, int y, char color, char *font); // 绘制字符(8*16)
+void putfont16(char *vram, int screenx, int x, int y, char color, short *font); // 绘制字符(16*16)
 void putfonts8_asc(char *vram, int screenx, int x, int y, char color, unsigned char *str); // 绘制字符串
 void init_mouse_cursor8(char *mouse, char bc); // 初始化鼠标指针(16x16像素)像素点颜色数据
 void putblock8_8(char *vram, int screenx, int pxsize,
@@ -362,6 +363,8 @@ struct TSS32 {
     - fhandle: 任务绑定的文件缓冲区地址(可以使用数组表示多个缓冲区)
     - fat: 任务绑定的fat起始地址
     - cmdline: 当前控制台输入的指令
+    - langmode: 语言模式
+    - langbuf: 全角字符(多字节字符)时缓存字符第一字节
 */
 struct TASK {
     int selector, flags;
@@ -374,6 +377,7 @@ struct TASK {
     struct FILEHANDLE *fhandle;
     int *fat;
     char *cmdline;
+    unsigned char langmode, langbuf;
 };
 /*
     任务层级
@@ -457,6 +461,7 @@ void cmd_type(struct CONSOLE *console, int *fat, char *cmdline);
 void cmd_exit(struct CONSOLE *console, int *fat);
 void cmd_start(struct CONSOLE *console, char *cmdline, int memorytotal);
 void cmd_ncst(struct CONSOLE *console, char *cmdline, int memorytotal);
+void cmd_langmode(struct CONSOLE *console, char *cmdline);
 int cmd_app(struct CONSOLE *console, int *fat, char *cmdline);
 int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
 int *inthandler0d(int *esp);
@@ -482,8 +487,24 @@ struct FILEINFO {
     unsigned int size;
 };
 void file_readfat(int *fat, unsigned char *img);
-void fiel_loadfile(int clustno, int size, char *buf, int *fat, char *img);
+void file_loadfile(int clustno, int size, char *buf, int *fat, char *img);
+char *file_load_compressfile(int clustno, int *psize, int *fat);
 struct FILEINFO *file_search(char *filefullname, struct FILEINFO *fileinfo, int max);
 
 /* taskb.c */
 void task_b_implement(struct LAYER *layer_back);
+
+/* tek.c */
+
+/* 
+    获取tek文件大小,若不是tek格式文件则返回-1
+    - p: 文件起始地址
+*/
+int tek_getsize(unsigned char *p);
+/*
+    解压缩tek文件
+    - p: 文件起始地址
+    - q: 解压缩目的地址
+    - size: 文件大小
+*/
+int tek_decomp(unsigned char *p, char *q, int size);

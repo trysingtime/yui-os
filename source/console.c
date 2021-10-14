@@ -16,6 +16,8 @@ void console_task(struct LAYER *layer, unsigned int memorytotal) {
     /* 获取当前任务 */
     struct TASK *task = task_current();
     task->console = &console; // 将控制台内存地址放入TASK中, 应用程序可以通过TASK获取控制台地址, 进而调用控制台函数
+    task->langmode = 0; // 英文模式
+    task->langbuf = 0;
 
     /* 设置定时器 */
     if (console.layer != 0) {
@@ -227,6 +229,11 @@ void console_newline(struct CONSOLE *console) {
     }
     // 光标重置到行首
     console->cursor_x = 8;
+    // 换行后全角字符需要16个像素才能显示, 行首需额外加8像素
+    struct TASK *task = task_current();
+    if (task->langmode != 0 && task->langbuf != 0) {
+        console->cursor_x += 8;
+    }
     return;
 }
 
@@ -284,7 +291,10 @@ void console_runcmd(char *cmdline, struct CONSOLE *console, int *fat, unsigned i
         cmd_start(console, cmdline, memorytotal);       
     } else if (strncmp(cmdline, "ncst ", 5) == 0) {
         /* ncst指令 */
-        cmd_ncst(console, cmdline, memorytotal);      
+        cmd_ncst(console, cmdline, memorytotal);   
+    } else if (strncmp(cmdline, "langmode ", 9) == 0) {
+        /* 切换语言模式 */
+        cmd_langmode(console, cmdline);             
     }  else if (cmdline[0] != 0) {
         /* app指令 */
         int r = cmd_app(console, fat, cmdline);
@@ -390,7 +400,7 @@ void cmd_type(struct CONSOLE *console, int *fat, char *cmdline) {
         // 读取文件内容到*p地址, 使用完后需要释放掉
         struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
         char *p = (char *) memory_alloc_4k(mng, fileinfo->size);
-        fiel_loadfile(fileinfo->clustno, fileinfo->size, p, fat, (char *) (ADR_DISKIMG + 0x003e00));
+        file_loadfile(fileinfo->clustno, fileinfo->size, p, fat, (char *) (ADR_DISKIMG + 0x003e00));
         // 打印文件内容
         console_putstr1(console, p, fileinfo->size);
         // 释放内存
@@ -419,7 +429,7 @@ void cmd_exit(struct CONSOLE *console, int *fat) {
     memory_free_4k(mng, (int) fat, 4 * 2880);
     // 关闭控制台(控制台无法关闭自身, 将关闭指令发给主任务缓冲区, 让主任务关闭本控制台)
     /* 获取要发送的目的地 */
-    struct FIFO32 *fifo = (struct FIFO32 *) *((int *) 0xfec); // 通用缓冲区地址, 操作系统启动时已将地址放入了0x0fec
+    struct FIFO32 *fifo = (struct FIFO32 *) *((int *) 0x0fec); // 通用缓冲区地址, 操作系统启动时已将地址放入了0x0fec
     /* 获取要发送的指令 */
     struct LAYERCTL *layerctl = (struct LAYERCTL *) *((int *) 0x0fe4); // 图层控制器地址, 操作系统启动时已将地址放入了0x0fe4
     int seq = console->layer - layerctl->layers; // 当前图层序号
@@ -487,6 +497,24 @@ void cmd_ncst(struct CONSOLE *console, char *cmdline, int memorytotal) {
 }
 
 /*
+    切换当前任务的语言模式
+    - 0: 英文模式; 1: 日语Shift-JIS; 2: 日语EUC
+    - console: 执行指令的控制台
+    - cmdline: 输入到控制台的指令
+*/
+void cmd_langmode(struct CONSOLE *console, char *cmdline) {
+    unsigned char mode = cmdline[9] - '0';
+    if (mode <= 3) {
+        struct TASK *task = task_current();
+        task->langmode = mode;
+    } else {
+        console_putstr0(console, "mode number error.\n");
+    }
+    console_newline(console);
+    return;
+}
+
+/*
     运行hlt应用
     操作系统执行app:      操作系统将app注册到GDT, 例如段号1003, 然后通过far-Call执行app, app通过far-RET返回
     app调用操作系统API:   操作系统将API注册到IDT, 例如中断号0x40, app通过INT调用API, 操作系统通过IRETD返回
@@ -520,10 +548,10 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
         /* 找到文件的情况 */
         // 读取文件内容到*p地址, 使用完后需要释放掉
         struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
-        char *p = (char *) memory_alloc_4k(mng, fileinfo->size);
-        fiel_loadfile(fileinfo->clustno, fileinfo->size, p, fat, (char *) (ADR_DISKIMG + 0x003e00));
+        int appsize = fileinfo->size; // 使用中间变量, 防止fileinfo-size被直接修改
+        char *p = file_load_compressfile(fileinfo->clustno, &appsize, fat);
         // 启动app
-        if (fileinfo->size >= 36 && strncmp(p + 4, "Hari", 4) == 0 && *p == 0x00) {
+        if (appsize >= 36 && strncmp(p + 4, "Hari", 4) == 0 && *p == 0x00) {
             // .hrb文件开头的36字节存放了文件信息(详情见README.MD)
             int segment_size    = *((int *) (p + 0x0000)); // 请求操作系统为应用程序准备的数据段的大小(编译时指定的malloc大小+栈大小, 请确保app的malloc大小超过32K!!!)
             int esp             = *((int *) (p + 0x000c)); // ESP初值(栈顶, 栈大小由obj2bim参数如(stack:1k)决定)
@@ -577,11 +605,13 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
             timer_cannel_with_fifo(&task->fifo);
             // 释放app数据段内存
             memory_free_4k(mng, (int) q, segment_size); // 释放内存
+            // app中断时, langbuf可能还存在未处理的数据, 清空
+            task->langbuf = 0;
         } else {
             console_putstr0(console, ".hrb file format error.\n");
         }
         // 释放app代码段内存
-        memory_free_4k(mng, (int) p, fileinfo->size);
+        memory_free_4k(mng, (int) p, appsize);
         
         console_newline(console);
         return 1;
@@ -710,7 +740,7 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
                 timer_cancel(console->timer);
                 // 关闭控制台(控制台无法关闭自身, 将关闭指令发给主任务缓冲区, 让主任务关闭本控制台)
                 /* 获取要发送的目的地 */
-                struct FIFO32 *fifo = (struct FIFO32 *) *((int *) 0xfec); // 通用缓冲区地址, 操作系统启动时已将地址放入了0x0fec
+                struct FIFO32 *fifo = (struct FIFO32 *) *((int *) 0x0fec); // 通用缓冲区地址, 操作系统启动时已将地址放入了0x0fec
                 /* 获取要发送的指令 */
                 struct LAYERCTL *layerctl = (struct LAYERCTL *) *((int *) 0x0fe4); // 图层控制器地址, 操作系统启动时已将地址放入了0x0fe4
                 int seq = console->layer - layerctl->layers; // 当前图层序号
@@ -784,7 +814,7 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
                 fh->buf = (char *) memory_alloc_4k(mng, finfo->size);
                 fh->size = finfo->size;
                 fh->pos = 0;
-                fiel_loadfile(finfo->clustno, finfo->size, fh->buf, task->fat, (char *)(ADR_DISKIMG + 0x3e00));
+                fh->buf = file_load_compressfile(finfo->clustno, &fh->size, task->fat); // &fh->size值将被函数修改
                 // 返回文件缓冲区地址
                 reg[7] = (int) fh;
             }
@@ -855,6 +885,9 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         }
         // 返回实际存放了多少字节
         reg[7] = i;
+    } else if (edx == 27) {
+        /* 获取控制台当前语言模式(edx:27,eax(返回值):(1: 英文; 2: 日语Shift-JIS; 3: 日语EUC-JP)) */
+        reg[7] = task->langmode;
     }
     return 0;
 }

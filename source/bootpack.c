@@ -91,6 +91,57 @@ void HariMain(void) {
     memory_free(mng, 0x00001000, 0x0009e000); // 0x00001000~0x0009e000暂未使用, 释放掉
     memory_free(mng, 0x00400000, memorytotal - 0x00400000); // 0x00400000以后的内存也暂未使用, 释放掉
 
+// 载入字体
+    int i;
+    // 读取FAT
+    int *fat = (int *)memory_alloc_4k(mng, 4 * 2880);
+    file_readfat(fat, (unsigned char *) (ADR_DISKIMG + 0x0200));
+
+// 载入中文字体(不包含半角符号)
+    unsigned char *chinese;
+    // 根据文件名查找
+    struct FILEINFO *finfo = file_search("chinese.fnt", (struct FILEINFO *) (ADR_DISKIMG + 0x2600), 224);
+    if (finfo != 0) {
+        /* 存在字库文件 */
+        // 根据FAT读取文件内容
+        i = finfo->size; // 使用中间变量, 防止finfo-size被直接修改
+        chinese = file_load_compressfile(finfo->clustno, &i, fat);
+    } else {
+        /* 没有字库文件 */
+        chinese = (unsigned char *) memory_alloc_4k(mng, 32 * 94 * 55); // 中文分为94区(此处仅需要0~55区), 每区包含94个字体, 每个字体32字节
+        for (i = 0; i < 32 * 94 * 55; i++) {
+            chinese[i] = 0xff;
+        }
+    }
+    // 将中文字体地址放入0x0fe0
+    *((int *) 0x0fe8) = (int) chinese;
+// 载入日语字体(包含半角符号)
+    unsigned char *nihongo;
+    // 根据文件名查找
+    finfo = file_search("nihongo.fnt", (struct FILEINFO *) (ADR_DISKIMG + 0x2600), 224);
+    if (finfo != 0) {
+        /* 存在字库文件 */
+        // 根据FAT读取文件内容
+        i = finfo->size; // 使用中间变量, 防止finfo-size被直接修改
+        nihongo = file_load_compressfile(finfo->clustno, &i, fat);
+    } else {
+        /* 没有字库文件 */
+        nihongo = (unsigned char *) memory_alloc_4k(mng, 16 * 256 + 32 * 94 * 47); // 日文分为94区(此处仅需要0~47区), 每区包含94个字体, 每个字体32字节, 且前256字符为半角符号
+        // 前256字符使用系统内置字库
+        extern char hankaku[4096];
+        for (i = 0; i < 16 * 256; i++) {
+            nihongo[i] = hankaku[i];
+        }
+        // 后续字符使用0xff覆盖
+        for (i = 16 * 256; i < 16 * 256 + 32 * 94 * 47; i++) {
+            nihongo[i] = 0xff;
+        }
+    }
+    // 将日语字体地址放入0x0fe0
+    *((int *) 0x0fe0) = (int) nihongo;
+    // 释放FAT内存空间
+    memory_free_4k(mng, (int) fat, 4 * 2880);
+
 // 显示
     init_palette(); // 设定调色盘
 
@@ -100,6 +151,9 @@ void HariMain(void) {
     task_a = taskctl_init(mng);
 // 主任务task_a
     task_run(task_a, 1, 0); // 更新task_a的层级信息为1
+    // 主任务语言模式
+    task_a->langmode = 0; // 默认英文模式
+    task_a->langbuf = 0;
     // 主任务缓冲区
     int task_a_fifo[128];
     fifo32_init(&task_a->fifo, 128, task_a_fifo, 0); // 无自动唤醒
@@ -107,7 +161,7 @@ void HariMain(void) {
     // 主任务图层
     struct LAYERCTL *layerctl;
     layerctl = layerctl_init(mng, bootinfo->vram, bootinfo->screenx, bootinfo->screeny); // 初始化图层管理
-    *((int *) 0x0fe4) = (int) layerctl; // 将图层管理器地址放入0xfe4, 便于app调用系统api
+    *((int *) 0x0fe4) = (int) layerctl; // 将图层管理器地址放入0x0fe4, 便于app调用系统api
     // 背景图层
     struct LAYER *layer_back;
     unsigned char *buf_back;
@@ -154,7 +208,6 @@ void HariMain(void) {
     int new_window_x = 0x7fffffff, new_window_y = 0; // 鼠标拖动窗口后, 窗口的坐标
 
 // 键盘和鼠标输入处理
-    int i;
     for (;;) {
         /* 键盘LEDS控制缓冲区处理 */
         if (fifo32_status(&keycmd) > 0 && keycmd_wait < 0) {

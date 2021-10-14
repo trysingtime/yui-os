@@ -111,7 +111,7 @@ void init_screen8(char *vram, int screenx, int screeny) {
 }
 
 /*
-    绘制字符
+    绘制字符(8*16)
     vram: vram起始地址
     screenx: 分辨率x轴大小
     x, y: 字符位置
@@ -136,19 +136,148 @@ void putfont8(char *vram, int screenx, int x, int y, char color, char *font) {
 }
 
 /*
+    绘制字符(16*16)
+    vram: vram起始地址
+    screenx: 分辨率x轴大小
+    x, y: 字符位置
+    color: 色号
+    font: 字体数据(使用32字节定义一个16x16像素的字符)
+*/
+void putfont16(char *vram, int screenx, int x, int y, char color, short *font) {
+    int i;
+    char *p;
+    for (i = 0; i <= 16; i++) {
+        // 16x16像素字符, 每一行起始vram地址
+        p = vram + (y + i) * screenx + x;
+        if ((font[i] & 0x0080) != 0) { p[0] = color; }
+        if ((font[i] & 0x0040) != 0) { p[1] = color; }
+		if ((font[i] & 0x0020) != 0) { p[2] = color; }
+		if ((font[i] & 0x0010) != 0) { p[3] = color; }
+		if ((font[i] & 0x0008) != 0) { p[4] = color; }
+		if ((font[i] & 0x0004) != 0) { p[5] = color; }
+		if ((font[i] & 0x0002) != 0) { p[6] = color; }
+		if ((font[i] & 0x0001) != 0) { p[7] = color; }
+        if ((font[i] & 0x8000) != 0) { p[8] = color; }
+        if ((font[i] & 0x4000) != 0) { p[9] = color; }
+		if ((font[i] & 0x2000) != 0) { p[10] = color; }
+		if ((font[i] & 0x1000) != 0) { p[11] = color; }
+		if ((font[i] & 0x0800) != 0) { p[12] = color; }
+		if ((font[i] & 0x0400) != 0) { p[13] = color; }
+		if ((font[i] & 0x0200) != 0) { p[14] = color; }
+		if ((font[i] & 0x0100) != 0) { p[15] = color; }
+    }
+}
+
+/*
     绘制字符串
     vram: vram起始地址
     screenx: 分辨率x轴大小
     x, y: 字符串位置
     color: 色号
-    str: 字符串
+    s: 字符串
 */
-void putfonts8_asc(char *vram, int screenx, int x, int y, char color, unsigned char *str) {
-    extern char hankaku[4096]; // 使用16字节定义一个8x16像素的字符, 此处是4096个字符集合
-    // c语言中, 字符串以0x00结尾
-    for (; *str != 0x00; str++) {
-        putfont8(vram, screenx, x, y, color, hankaku + *str * 16);
-        x += 8;
+void putfonts8_asc(char *vram, int screenx, int x, int y, char color, unsigned char *s) {
+    // 根据设定的语言模式使用不同字库绘制字体
+    struct TASK *task = task_current();
+    if (task->langmode == 0) {
+        /* 0: 英文模式 */
+        extern char hankaku[4096]; // 使用16字节定义一个8x16像素的字符, 此处是4096个字符集合
+        // c语言中, 字符串以0x00结尾
+        for (; *s != 0x00; s++) {
+            putfont8(vram, screenx, x, y, color, hankaku + *s * 16);
+            x += 8;
+        }
+    } else if (task->langmode == 1) {
+        /* 1: 中文模式GB2312 */
+        char *chinese = (char *) *((int *)0x0fe8);
+        for (; *s != 0x00; s++) {
+            if (task->langbuf == 0) {
+                if (0xa1 <= *s && *s <= 0xfe) {
+                    /* GB2312编码第一个字节 */
+                    task->langbuf = *s;
+                } else {
+                    /* 半角符号 */
+                    extern char hankaku[4096]; // 使用16字节定义一个8x16像素的字符, 此处是4096个字符集合
+                    putfont8(vram, screenx, x, y, color, hankaku + *s * 16);
+                }
+            } else {
+                /* GB2312编码第二字节 */
+                int k = task->langbuf - 0xa1; // 区号(区号0代表01~02区)
+                int t = *s - 0xa1; // 点号(点号0代表01~02点)
+                // 绘制
+                short *font = (short *)(chinese + (k * 94 + t) * 32);
+                putfont16(vram, screenx, x - 8, y, color, font);
+                task->langbuf = 0;
+            }
+            x += 8;
+        }      
+    } else if (task->langmode == 2) {
+        /* 2: 日语模式Shift-JIS */
+        char *nihongo = (char *) *((int *)0x0fe0);
+        for (; *s != 0x00; s++) {
+            if (task->langbuf == 0) {
+                if ((0x81 <= *s && *s <= 0x9f) || (0xe0 <= *s && *s <= 0xfc)) {
+                    /* Shift-JIS编码第一个字节 */
+                    task->langbuf = *s;
+                } else {
+                    /* 半角符号 */
+                    putfont8(vram, screenx, x, y, color, nihongo + *s * 16);
+                }
+            } else {
+                /* Shift-JIS编码第二个字节 */
+                int k; // 区号(区号0代表01~02区)
+                if (0x81 <= task->langbuf && task->langbuf <= 0x9f) {
+                    // 面号1(01~62区)
+                    k = (task->langbuf - 0x81) * 2; // 区号0代表01~02区
+                } else {
+                    // 面号1(63~94区)及面号2(01~94区)
+                    k = (task->langbuf - 0xe0) * 2 + 62; // 区号62代表63~64区
+                }
+
+                int t; // 点号(点号0代表01~02点)
+                if (0x40 <= *s && *s <= 0x7e) {
+                    // 区号1(01~62点)
+                    t = *s - 0x40;
+                } else if (0x80 <= *s && *s <= 0x9e) {
+                    // 区号1(63~94点)
+                    t = *s - 0x80 + 63;
+                } else {
+                    // 区号2(01~94点)
+                    k++;
+                    t = *s - 0x9f;
+                }
+                // 绘制
+                char *font = nihongo + 256 * 16 + (k * 94 + t) * 32;
+                putfont8(vram, screenx, x - 8, y, color, font     ); // 绘制字体左半部分
+                putfont8(vram, screenx, x    , y, color, font + 16); // 绘制字体右半部分
+                task->langbuf = 0;
+            }
+            x += 8;
+        }
+    } else if (task->langmode == 3) {
+        /* 3: 日语模式EUC */
+        char *nihongo = (char *) *((int *)0x0fe0);
+        for (; *s != 0x00; s++) {
+            if (task->langbuf == 0) {
+                if (0xa1 <= *s && *s <= 0xfe) {
+                    /* EUC编码第一个字节 */
+                    task->langbuf = *s;
+                } else {
+                    /* 半角符号 */
+                    putfont8(vram, screenx, x, y, color, nihongo + *s * 16);
+                }
+            } else {
+                /* EUC编码第二字节 */
+                int k = task->langbuf - 0xa1; // 区号(区号0代表01~02区)
+                int t = *s - 0xa1; // 点号(点号0代表01~02点)
+                // 绘制
+                char *font = nihongo + 256 * 16 + (k * 94 + t) * 32;
+                putfont8(vram, screenx, x - 8, y, color, font     ); // 绘制字体左半部分
+                putfont8(vram, screenx, x    , y, color, font + 16); // 绘制字体右半部分
+                task->langbuf = 0;
+            }
+            x += 8;
+        }
     }
     return;
 }

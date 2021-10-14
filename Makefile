@@ -33,11 +33,11 @@ install :
 	$(IMGTOL) w a: haribote.img
 
 ## 启动程序加载器+操作系统+应用程序
-haribote.img : target/ipl10.bin target/haribote.sys $(wildcard app/*.obj) Makefile
+haribote.img : target/ipl20.bin target/haribote.sys $(wildcard app/*.obj) Makefile
 	$(EDIMG)   imgin:$(TOOLPATH)/fdimg0at.tek \
-		wbinimg src:target/ipl10.bin len:512 from:0 to:0 \
+		wbinimg src:target/ipl20.bin len:512 from:0 to:0 \
 		copy from:target/haribote.sys to:@: \
-		copy from:source/ipl10.nas to:@: \
+		copy from:source/ipl20.nas to:@: \
 		copy from:make.bat to:@: \
 		copy from:app/a/a.hrb to:@: \
 		copy from:app/hello3/hello3.hrb to:@: \
@@ -58,6 +58,10 @@ haribote.img : target/ipl10.bin target/haribote.sys $(wildcard app/*.obj) Makefi
 		copy from:app/sosu3/sosu3.hrb to:@: \
 		copy from:app/typeipl/typeipl.hrb to:@: \
 		copy from:app/type/type.hrb to:@: \
+		copy from:app/iroha/iroha.hrb to:@: \
+		copy from:app/chklang/chklang.hrb to:@: \
+		copy from:font/chinese.fnt to:@: \
+		copy from:font/nihongo.fnt to:@: \
 		imgout:haribote.img
 
 ## 启动程序加载器+操作系统
@@ -86,6 +90,8 @@ application :
 	$(MAKE) -C app/sosu3
 	$(MAKE) -C app/typeipl
 	$(MAKE) -C app/type
+	$(MAKE) -C app/iroha
+	$(MAKE) -C app/chklang
 
 clean :
 	$(MAKE) -C source		clean
@@ -109,6 +115,8 @@ clean :
 	$(MAKE) -C app/sosu3	clean
 	$(MAKE) -C app/typeipl	clean
 	$(MAKE) -C app/type		clean
+	$(MAKE) -C app/iroha	clean
+	$(MAKE) -C app/chklang	clean
 
 src_only :
 	$(MAKE) -C source		src_only
@@ -132,4 +140,6 @@ src_only :
 	$(MAKE) -C app/sosu3	src_only
 	$(MAKE) -C app/typeipl	src_only
 	$(MAKE) -C app/type		src_only
+	$(MAKE) -C app/iroha	src_only
+	$(MAKE) -C app/chklang	src_only
 	-$(DEL) haribote.img

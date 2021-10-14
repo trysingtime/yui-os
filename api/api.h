@@ -50,3 +50,5 @@ int api_fsize(int fhandle, int mode);
 int api_fread(char *buf, int maxsize, int fhandle);
 /* 获取控制台当前指令(edx:26,eax:命令行缓冲区地址,ecx:最大存放字节数,eax(返回值):实际存放字节数) */
 int api_cmdline(char *buf, int maxsize);
+/* 获取控制台当前语言模式(edx:27,eax(返回值): 语言模式) */
+int api_getlang(void);

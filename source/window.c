@@ -192,7 +192,15 @@ void make_textbox8(struct LAYER *layer, int x0, int y0, int xsize, int ysize, in
 */
 void putfonts8_asc_layer(struct LAYER *layer, int x, int y, int color, int backcolor, char *string, int length) {
         boxfill8(layer->buf, layer->bxsize, backcolor, x, y, x + length * 8 - 1, y + 15); // 擦除原有数据(绘制背景色矩形遮住之前绘制好的数据)
-        putfonts8_asc(layer->buf, layer->bxsize, x, y, color, string); // 显示新的数据
-        layer_refresh(layer, x, y, x + length * 8, y + 16); // 刷新图层
+        struct TASK *task = task_current();
+        if (task->langmode != 0 && task->langbuf != 0) {
+            /* 全角符号 */
+            putfonts8_asc(layer->buf, layer->bxsize, x, y, color, string); // 显示新的数据
+            layer_refresh(layer, x - 8, y, x + length * 8, y + 16); // 刷新图层
+        } else {
+            /* 半角符号 */
+            putfonts8_asc(layer->buf, layer->bxsize, x, y, color, string); // 显示新的数据
+            layer_refresh(layer, x, y, x + length * 8, y + 16); // 刷新图层
+        }
         return;
 }

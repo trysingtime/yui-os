@@ -2,6 +2,7 @@
 int api_openwin(char *buf, int xsize, int ysize, int col_inv, char *title);
 void api_putstrwin(int win, int x, int y, int col, int len, char *str);
 void api_boxfillwin(int win, int x0, int y0, int x1, int y1, int col);
+int api_getkey(int mode);
 void api_end(void);
 
 //char buf[150 * 50]; // 使用静态变量将会编译为obj占用代码段内存

@@ -1,6 +1,6 @@
 OBJS_BOOTPACK = bootpack.obj naskfunc.obj hankaku.obj graphic.obj dsctbl.obj int.obj \
 				fifo.obj keyboard.obj mouse.obj memory.obj layer.obj timer.obj multitask.obj \
-				window.obj taskb.obj console.obj file.obj
+				window.obj taskb.obj console.obj file.obj tek.obj
 				
 # 编译工具
 ROOT	 = ../
@@ -35,12 +35,12 @@ DEL      = del
 
 # 编译目标
 default :             
-	$(MAKE) ipl10.bin
+	$(MAKE) ipl20.bin
 	$(MAKE) haribote.sys
 
 # 启动程序加载器
-ipl10.bin : ipl10.nas Makefile
-	$(NASK) ipl10.nas $(TARGETPATH)ipl10.bin $(TARGETPATH)ipl10.lst
+ipl20.bin : ipl20.nas Makefile
+	$(NASK) ipl20.nas $(TARGETPATH)ipl20.bin $(TARGETPATH)ipl20.lst
 
 # 操作系统
 ## 系统设定+(TXT文件+汇编语言+C语言)

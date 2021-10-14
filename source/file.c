@@ -35,7 +35,7 @@ void file_readfat(int *fat, unsigned char *img) {
     - fat: 解压缩后的FAT信息存储地址
     - img: 簇号偏移地址(文件内容起始地址 = 簇号偏移地址+簇号*512)
 */
-void fiel_loadfile(int clustno, int size, char *buf, int *fat, char *img) {
+void file_loadfile(int clustno, int size, char *buf, int *fat, char *img) {
     int i;
     for(;;) {
         /* 文件大小<=512字节, 则无需查询FAT, 直接通过簇号偏移地址计算 */
@@ -60,6 +60,36 @@ void fiel_loadfile(int clustno, int size, char *buf, int *fat, char *img) {
         clustno = fat[clustno]; // 根据当前簇号获取下一簇号
     }
     return;
+}
+
+/*
+    读取文件并解压缩到指定地址
+    - clustno: 文件信息中的簇号
+    - psize: 保存文件大小的地址(注意该地址的值将被函数所改变)
+    - fat: 解压缩后的FAT信息存储地址
+*/
+char *file_load_compressfile(int clustno, int *psize, int *fat) {
+    struct MEMMNG *mng = (struct MEMMNG *) MEMMNG_ADDR; // 内存控制器
+    // 读取文件
+    char *buf = (char *) memory_alloc_4k(mng, *psize);
+    file_loadfile(clustno, *psize, buf, fat, (char *)(ADR_DISKIMG + 0x003e00));
+    // 判断是否是压缩文件
+    if (*psize >= 17) {
+        int teksize = tek_getsize(buf);
+        if (teksize > 0) {
+            /* 使用tek格式压缩的文件 */
+            // 从buf解压缩到tekbuf
+            char *tekbuf = (char *) memory_alloc_4k(mng, teksize);
+            tek_decomp(buf, tekbuf, teksize);
+            // 释放buf
+            memory_free_4k(mng, (int)buf, *psize);
+            // 重定向buf
+            buf = tekbuf;
+            // 修改文件大小为解压缩后的大小(psize应使用新变量传入该函数)
+            *psize = teksize;
+        }
+    }
+    return buf;
 }
 
 /*

@@ -560,7 +560,7 @@ int cmd_app(struct CONSOLE *console, int *fat, char *cmdline) {
             // 在TSS中注册操作系统的段号和ESP(将操作系统的ESP和段号先后压入TSS栈esp0)
             struct TASK *task = task_current();
             // 将app代码段注册到GDT, 段号1005(段号1~2由dsctbl.c使用, 段号3~1002由TSS使用, 段号1003~2002由LDT使用, 其中主任务1003, 段号1004哨兵任务), 段属性加上0x60, 将段设置成应用程序专用段
-            set_segmdesc(task->ldt + 0, fileinfo->size - 1, (int) p, AR_CODE32_ER + 0x60); // LDT(两个段16字节), 第一个段信息用于app代码段
+            set_segmdesc(task->ldt + 0, appsize - 1, (int) p, AR_CODE32_ER + 0x60); // LDT(两个段16字节), 第一个段信息用于app代码段
             // 将app数据段注册到GDT, 段号20045, 大小segment_size, 段属性加上0x60, 将段设置成应用程序专用段
             char *q = (char *) memory_alloc_4k(mng, segment_size);
             task->ds_base = (int) q; // 将app数据段起始地址放入TASK中, 便于app调用系统API
@@ -702,6 +702,18 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         /* 13: 窗口绘制直线(edx:13,ebx:窗口图层地址,eax:x0,ecx:y0,esi:x1,edi:y1,ebp:颜色) */
         struct LAYER *layer = (struct LAYER *) ebx;
         api_linewin(layer, eax, ecx, esi, edi, ebp);
+        // 刷新图层
+        if (eax > esi) {
+            int i = eax;
+            eax = esi;
+            esi = i;
+        }
+        if (ecx > edi) {
+            int i = ecx;
+            ecx = edi;
+            edi = i;
+        }
+        layer_refresh(layer, eax, ecx, esi + 1, edi + 1);
     } else if (edx == 14) {
         /* 14: 关闭窗口图层(edx:14,ebx:窗口图层地址) */
         layer_free((struct LAYER *) ebx);

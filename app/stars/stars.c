@@ -7,6 +7,7 @@ void api_end(void);
 void api_initmalloc(void);
 char *api_malloc(int size);
 void api_free(char *addr, int size);
+int api_getkey(int mode);
 
 int rand(void); // 产生0~32767之间的随机数
 

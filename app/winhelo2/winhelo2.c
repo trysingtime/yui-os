@@ -10,10 +10,9 @@ void api_free(char *addr, int size);
 
 void HariMain(void) {
     // 分配内存
-    api_initmalloc(); // app内存控制器
-    // 分配150*50内存大小
+    // api_initmalloc(); // app内存控制器
     // char *buf = api_malloc(150 * 50); // 使用malloc分配
-    char buf[150 * 50]; // 使用alloca分配
+    char buf[150 * 50]; // 栈大于4k, 将会使用alloca分配
     // 打开窗口并返回窗口图层地址
     int win = api_openwin(buf, 150, 50, -1, "hello");
     // 显示窗口内容

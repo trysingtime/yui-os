@@ -38,6 +38,8 @@ haribote.img : target/ipl20.bin target/haribote.sys $(wildcard app/*.obj) Makefi
 		wbinimg src:target/ipl20.bin len:512 from:0 to:0 \
 		copy from:target/haribote.sys to:@: \
 		copy from:source/ipl20.nas to:@: \
+		copy from:font/chinese.fnt to:@: \
+		copy from:font/nihongo.fnt to:@: \
 		copy from:make.bat to:@: \
 		copy from:app/a/a.hrb to:@: \
 		copy from:app/hello3/hello3.hrb to:@: \
@@ -59,8 +61,8 @@ haribote.img : target/ipl20.bin target/haribote.sys $(wildcard app/*.obj) Makefi
 		copy from:app/type/type.hrb to:@: \
 		copy from:app/iroha/iroha.hrb to:@: \
 		copy from:app/chklang/chklang.hrb to:@: \
-		copy from:font/chinese.fnt to:@: \
-		copy from:font/nihongo.fnt to:@: \
+		copy from:app/notrec/notrec.hrb to:@: \
+		copy from:app/bball/bball.hrb to:@: \
 		imgout:haribote.img
 
 ## 启动程序加载器+操作系统
@@ -90,6 +92,8 @@ application :
 	$(MAKE) -C app/type
 	$(MAKE) -C app/iroha
 	$(MAKE) -C app/chklang
+	$(MAKE) -C app/notrec
+	$(MAKE) -C app/bball
 
 clean :
 	$(MAKE) -C source		clean
@@ -114,6 +118,8 @@ clean :
 	$(MAKE) -C app/type		clean
 	$(MAKE) -C app/iroha	clean
 	$(MAKE) -C app/chklang	clean
+	$(MAKE) -C app/notrec	clean
+	$(MAKE) -C app/bball	clean
 
 src_only :
 	$(MAKE) -C source		src_only
@@ -138,4 +144,6 @@ src_only :
 	$(MAKE) -C app/type		src_only
 	$(MAKE) -C app/iroha	src_only
 	$(MAKE) -C app/chklang	src_only
+	$(MAKE) -C app/notrec	src_only
+	$(MAKE) -C app/bball	src_only
 	-$(DEL) haribote.img

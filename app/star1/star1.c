@@ -6,6 +6,7 @@ void api_end(void);
 void api_initmalloc(void);
 char *api_malloc(int size);
 void api_free(char *addr, int size);
+int api_getkey(int mode);
 
 void HariMain(void) {
     // 分配内存

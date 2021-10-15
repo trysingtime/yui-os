@@ -5,6 +5,7 @@ target/
 *.map
 *.bim
 *.bin
+*.org
 *.hrb
 *.lib
 *.img

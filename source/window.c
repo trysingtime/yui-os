@@ -8,6 +8,10 @@
     - activa: 该窗口是否激活
 */
 void make_window8(unsigned char *buf, int xsize, int ysize, char *title, char active) {
+    /*
+        边界3像素 = 外阴影1像素 + 内阴影1像素 + 边界1像素
+        内容y轴起始21 = 边界3像素 + 标题栏高度18像素 - 1
+    */
 	boxfill8(buf, xsize, COL8_C6C6C6,           0,         0,         xsize - 1, 0        ); // 上边界-亮灰
 	boxfill8(buf, xsize, COL8_FFFFFF,           1,         1,         xsize - 2, 1        ); // 上边界-内阴影-白
 	boxfill8(buf, xsize, COL8_C6C6C6,           0,         0,         0,         ysize - 1); // 左边界-亮灰

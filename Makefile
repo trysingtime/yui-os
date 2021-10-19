@@ -63,6 +63,7 @@ haribote.img : target/ipl20.bin target/haribote.sys $(wildcard app/*.obj) Makefi
 		copy from:app/chklang/chklang.hrb to:@: \
 		copy from:app/notrec/notrec.hrb to:@: \
 		copy from:app/bball/bball.hrb to:@: \
+		copy from:app/invader/invader.hrb to:@: \
 		imgout:haribote.img
 
 ## 启动程序加载器+操作系统
@@ -94,6 +95,7 @@ application :
 	$(MAKE) -C app/chklang
 	$(MAKE) -C app/notrec
 	$(MAKE) -C app/bball
+	$(MAKE) -C app/invader
 
 clean :
 	$(MAKE) -C source		clean
@@ -120,6 +122,7 @@ clean :
 	$(MAKE) -C app/chklang	clean
 	$(MAKE) -C app/notrec	clean
 	$(MAKE) -C app/bball	clean
+	$(MAKE) -C app/invader	clean
 
 src_only :
 	$(MAKE) -C source		src_only
@@ -146,4 +149,5 @@ src_only :
 	$(MAKE) -C app/chklang	src_only
 	$(MAKE) -C app/notrec	src_only
 	$(MAKE) -C app/bball	src_only
+	$(MAKE) -C app/invader	src_only
 	-$(DEL) haribote.img

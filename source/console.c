@@ -669,14 +669,20 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         reg[7] = (int) layer; // 只返回图层地址到EAX寄存器(返回值默认为eax寄存器)
     } else if (edx == 6) {
         /* 6: 窗口显示字符串(edx:6,ebx:窗口图层地址,esi:显示的x坐标,edi:显示的y坐标,eax:颜色,ecx:字符长度,ebp:字符串) */
-        struct LAYER *layer = (struct LAYER *) ebx;
+        struct LAYER *layer = (struct LAYER *) (ebx & 0xfffffffe); // 最后一位是标志位, 不作为地址使用
         putfonts8_asc(layer->buf, layer->bxsize, esi, edi, eax, (char *) ebp + ds_base);
-        layer_refresh(layer, esi, edi, esi + ecx * 8, edi + 16);
+        // ebx最后一位标志是否需要刷新图层
+        if ((ebx & 1) == 0) {
+            layer_refresh(layer, esi, edi, esi + ecx * 8, edi + 16);
+        }
     } else if (edx == 7) {
         /* 7: 窗口显示方块(edx:7,ebx:窗口图层地址,eax:x0,ecx:y0,esi:x1,edi:y1,ebp:颜色) */
-        struct LAYER *layer = (struct LAYER *) ebx;
+        struct LAYER *layer = (struct LAYER *) (ebx & 0xfffffffe); // 最后一位是标志位, 不作为地址使用
         boxfill8(layer->buf, layer->bxsize, ebp, eax, ecx, esi, edi);
-        layer_refresh(layer, eax, ecx, esi + 1, edi + 1);
+        // ebx最后一位标志是否需要刷新图层
+        if ((ebx & 1) == 0) {
+            layer_refresh(layer, eax, ecx, esi + 1, edi + 1);
+        }
     } else if (edx == 8) {
         /* 8: 初始化app内存控制器(edx:8,ebx:内存控制器地址,eax:管理的内存空间起始地址,ecx:管理的内存空间字节数) */
         memmng_init((struct MEMMNG *) (ebx + ds_base)); // app内存控制器
@@ -700,20 +706,23 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         layer_refresh(layer, eax, ecx, esi, edi);
     } else if (edx == 13) {
         /* 13: 窗口绘制直线(edx:13,ebx:窗口图层地址,eax:x0,ecx:y0,esi:x1,edi:y1,ebp:颜色) */
-        struct LAYER *layer = (struct LAYER *) ebx;
+        struct LAYER *layer = (struct LAYER *) (ebx & 0xfffffffe); // 最后一位是标志位, 不作为地址使用
         api_linewin(layer, eax, ecx, esi, edi, ebp);
-        // 刷新图层
-        if (eax > esi) {
-            int i = eax;
-            eax = esi;
-            esi = i;
+        // ebx最后一位标志是否需要刷新图层
+        if ((ebx & 1) == 0) {
+            // 刷新图层
+            if (eax > esi) {
+                int i = eax;
+                eax = esi;
+                esi = i;
+            }
+            if (ecx > edi) {
+                int i = ecx;
+                ecx = edi;
+                edi = i;
+            }
+            layer_refresh(layer, eax, ecx, esi + 1, edi + 1);
         }
-        if (ecx > edi) {
-            int i = ecx;
-            ecx = edi;
-            edi = i;
-        }
-        layer_refresh(layer, eax, ecx, esi + 1, edi + 1);
     } else if (edx == 14) {
         /* 14: 关闭窗口图层(edx:14,ebx:窗口图层地址) */
         layer_free((struct LAYER *) ebx);
@@ -898,7 +907,7 @@ int *system_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, i
         // 返回实际存放了多少字节
         reg[7] = i;
     } else if (edx == 27) {
-        /* 获取控制台当前语言模式(edx:27,eax(返回值):(1: 英文; 2: 日语Shift-JIS; 3: 日语EUC-JP)) */
+        /* 获取控制台当前语言模式(edx:27,eax(返回值):(0: 英文, 1: 中文; 2: 日语Shift-JIS; 3: 日语EUC-JP)) */
         reg[7] = task->langmode;
     }
     return 0;

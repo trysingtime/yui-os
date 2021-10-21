@@ -103,6 +103,7 @@ next_group:
     keyflag[0] = 0;
     keyflag[1] = 0;
     keyflag[2] = 0;
+    lx = 0;
     ly = 0;
     laserwait = 0;
     // wait(100, timer, keyflag); // 延时0.1s
@@ -254,7 +255,7 @@ void putstr(int win, char *winbuf, int x, int y, int color, unsigned char *s) {
     y = y * 16 + 29; // 计算y轴坐标(窗口顶部边界3像素+标题栏18像素+内容边框7像素+间距2像素-1=29像素)
     int x0 = x; // 保存初始x值
     int i = strlen(s); // 计算字符串s的字符数
-    api_boxfillwin(win, x, y, x + i * 8 - 1, y + 15, 0);
+    api_boxfillwin(win + 1, x, y, x + i * 8 - 1, y + 15, 0); // 优化性能, win+1表示不刷新图层, 最后一块刷新
     // 绘制新字符
     for (;;) {
         int c = *s;
@@ -284,7 +285,7 @@ void putstr(int win, char *winbuf, int x, int y, int color, unsigned char *s) {
                 char t[2];
                 t[0] = *s;
                 t[1] = 0;
-                api_putstrwin(win, x, y, color, 1, t);
+                api_putstrwin(win + 1, x, y, color, 1, t); // 优化性能, win+1表示不刷新图层, 最后一块刷新
             }
         }
         // 下一个字符

@@ -18,7 +18,7 @@ void HariMain(void) {
     // 获取输入的指令
     char s[30];
     api_cmdline(s, 30);
-    // 跳过指令前面的空格
+    // 跳到第一个空格
     char *p;
     for (p = s; *p > ' '; p++) {}
     // 计算结果

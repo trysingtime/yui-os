@@ -9,7 +9,7 @@ void api_end(void);
 /* 显示窗口(edx:5,ebx:窗口内容地址,esi:窗口宽度,edi:窗口高度,eax:窗口颜色和透明度,ecx:窗口标题,返回值放入eax) */
 int api_openwin(char *buf, int xsize, int ysize, int col_inv, char *title);
 /* 窗口显示字符串(edx:6,ebx:窗口内容地址,esi:显示的x坐标,edi:显示的y坐标,eax:颜色,ecx:字符长度,ebp:字符串) */
-void api_putstrwin(int win, int x, int y, int col, int len, char *str);void api_putstr1(char *s, int l);
+void api_putstrwin(int win, int x, int y, int col, int len, char *str);
 /* 窗口显示方块(edx:7,ebx:窗口内容地址,eax:x0,ecx:y0,esi:x1,edi:y1,ebp:颜色) */
 void api_boxfillwin(int win, int x0, int y0, int x1, int y1, int col);
 /* 初始化app内存控制器(edx:8,ebx:内存控制器地址,eax:管理的内存空间起始地址,ecx:管理的内存空间字节数) */

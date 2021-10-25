@@ -64,9 +64,9 @@ run :
 	$(MAKE) -C $(TOOLPATH)qemu
 
 ### 启动程序加载器+操作系统+应用程序
-haribote.img : $(ROOT)target/ipl20.bin $(ROOT)target/haribote.sys $(APP).hrb Makefile $(ROOT)app_make.txt
+haribote.img : $(ROOT)target/ipl15.bin $(ROOT)target/haribote.sys $(APP).hrb Makefile $(ROOT)app_make.txt
 	$(EDIMG)   imgin:$(TOOLPATH)/fdimg0at.tek \
-		wbinimg src:$(ROOT)target/ipl20.bin len:512 from:0 to:0 \
+		wbinimg src:$(ROOT)target/ipl15.bin len:512 from:0 to:0 \
 		copy from:$(ROOT)target/haribote.sys to:@: \
 		copy from:$(APP).hrb to:@: \
 		imgout:$@

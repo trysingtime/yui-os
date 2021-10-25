@@ -33,11 +33,11 @@ install :
 	$(IMGTOL) w a: haribote.img
 
 ## 启动程序加载器+操作系统+应用程序
-haribote.img : target/ipl20.bin target/haribote.sys $(wildcard app/*.obj) Makefile
+haribote.img : target/ipl15.bin target/haribote.sys $(wildcard app/*.obj) Makefile
 	$(EDIMG)   imgin:$(TOOLPATH)/fdimg0at.tek \
-		wbinimg src:target/ipl20.bin len:512 from:0 to:0 \
+		wbinimg src:target/ipl15.bin len:512 from:0 to:0 \
 		copy from:target/haribote.sys to:@: \
-		copy from:source/ipl20.nas to:@: \
+		copy from:source/ipl15.nas to:@: \
 		copy from:font/chinese.fnt to:@: \
 		copy from:font/nihongo.fnt to:@: \
 		copy from:make.bat to:@: \

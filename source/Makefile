@@ -35,12 +35,12 @@ DEL      = del
 
 # 编译目标
 default :             
-	$(MAKE) ipl20.bin
+	$(MAKE) ipl15.bin
 	$(MAKE) haribote.sys
 
 # 启动程序加载器
-ipl20.bin : ipl20.nas Makefile
-	$(NASK) ipl20.nas $(TARGETPATH)ipl20.bin $(TARGETPATH)ipl20.lst
+ipl15.bin : ipl15.nas Makefile
+	$(NASK) ipl15.nas $(TARGETPATH)ipl15.bin $(TARGETPATH)ipl15.lst
 
 # 操作系统
 ## 系统设定+(TXT文件+汇编语言+C语言)
